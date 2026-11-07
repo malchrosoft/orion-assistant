@@ -109,7 +109,7 @@ N'ajoutez que des sources **ouvertes et gratuites**, sans paywall. Lancez ensuit
 
 ## Licence
 
-© 2026 Aymeric Malchrowicz — [PolyForm Strict 1.0.0](LICENSE).
+© 2026 Aymeric Malchrowicz — [PolyForm Strict 1.0.0](LICENSE) (identifiant SPDX : `PolyForm-Strict-1.0.0`).
 
 - **Utilisation libre, telle quelle**, pour tout usage non commercial : personnel, familial, associatif, éducatif…
 - **Interdit** : tout usage commercial, la modification et la redistribution, y compris de versions dérivées.
