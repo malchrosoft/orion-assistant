@@ -1,0 +1,111 @@
+{
+ "_regle": "Sources ouvertes et gratuites uniquement. niveau 3 = norme/texte officiel/publication fondatrice, 2 = ouvrage classique ouvert, 1 = vulgarisation. 'consulte' = date de la dernière vérification en ligne (python -m orion verifier).",
+ "domaines": {
+  "maths": [
+   {
+    "titre": "Programmes de mathématiques du lycée (Éduscol, ministère de l'Éducation nationale)",
+    "url": "https://eduscol.education.fr/1723/programmes-et-ressources-en-mathematiques-voie-gt",
+    "niveau": 3,
+    "erreur": "HTTP Error 403: Forbidden"
+   },
+   {
+    "titre": "OpenStax, Algebra and Trigonometry 2e (manuel ouvert, CC BY)",
+    "url": "https://openstax.org/details/books/algebra-and-trigonometry-2e",
+    "niveau": 2,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "mecanique": [
+   {
+    "titre": "OpenStax, University Physics Volume 1 (manuel ouvert, CC BY)",
+    "url": "https://openstax.org/details/books/university-physics-volume-1",
+    "niveau": 2,
+    "consulte": "2026-11-07"
+   },
+   {
+    "titre": "BIPM, Le Système international d'unités (brochure SI)",
+    "url": "https://www.bipm.org/fr/publications/si-brochure",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "electronique": [
+   {
+    "titre": "T. Kuphaldt, Lessons in Electric Circuits (livre ouvert)",
+    "url": "https://www.allaboutcircuits.com/textbook/direct-current/",
+    "niveau": 2,
+    "erreur": "HTTP Error 403: Forbidden"
+   },
+   {
+    "titre": "BIPM, Le Système international d'unités (brochure SI)",
+    "url": "https://www.bipm.org/fr/publications/si-brochure",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "batiment": [
+   {
+    "titre": "France Rénov' (service public de la rénovation de l'habitat)",
+    "url": "https://france-renov.gouv.fr/",
+    "niveau": 3,
+    "erreur": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate "
+   },
+   {
+    "titre": "Librairie ADEME (guides gratuits de l'agence de la transition écologique)",
+    "url": "https://librairie.ademe.fr/",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ]
+ },
+ "fiches": {
+  "Théorème de Pythagore": [
+   {
+    "titre": "Euclide, Éléments, livre I, proposition 47 (éd. D. Joyce, Clark University)",
+    "url": "https://mathcs.clarku.edu/~djoyce/java/elements/bookI/propI47.html",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "Théorème de Thalès": [
+   {
+    "titre": "Euclide, Éléments, livre VI, proposition 2 (éd. D. Joyce, Clark University)",
+    "url": "https://mathcs.clarku.edu/~djoyce/java/elements/bookVI/propVI2.html",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "Nombres premiers": [
+   {
+    "titre": "Euclide, Éléments, livre IX, proposition 20 : infinité des nombres premiers",
+    "url": "https://mathcs.clarku.edu/~djoyce/java/elements/bookIX/propIX20.html",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "Lois de Newton": [
+   {
+    "titre": "I. Newton, Principes mathématiques (trad. Motte, 1846), Projet Gutenberg",
+    "url": "https://www.gutenberg.org/ebooks/28233",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "Sécurité électrique": [
+   {
+    "titre": "INRS, risques électriques (institut national de recherche et de sécurité)",
+    "url": "https://www.inrs.fr/risques/electriques/ce-qu-il-faut-retenir.html",
+    "niveau": 3,
+    "consulte": "2026-11-07"
+   }
+  ],
+  "Isolation thermique": [
+   {
+    "titre": "France Rénov', isoler son logement",
+    "url": "https://france-renov.gouv.fr/renovation/isolation",
+    "niveau": 3,
+    "erreur": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate "
+   }
+  ]
+ }
+}

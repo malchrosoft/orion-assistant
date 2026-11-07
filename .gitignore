@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+models/
+orion/data/savoir.db
+orion/data/profils_voix.json
+config.json
+.venv/
+build/
+dist/
+*.spec
+__pycache__/
