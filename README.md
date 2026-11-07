@@ -106,3 +106,11 @@ python -m orion holo         démonstration de l'hologramme
 - **Références** : `orion/data/references.json`, par domaine ou par titre de fiche, avec un niveau de 1 à 3.
 
 N'ajoutez que des sources **ouvertes et gratuites**, sans paywall. Lancez ensuite `python -m orion verifier`.
+
+## Licence
+
+© 2026 Aymeric Malchrowicz — [PolyForm Strict 1.0.0](LICENSE).
+
+- **Utilisation libre, telle quelle**, pour tout usage non commercial : personnel, familial, associatif, éducatif…
+- **Interdit** : tout usage commercial, la modification et la redistribution, y compris de versions dérivées.
+- **Contributions bienvenues** : un fork n'est autorisé que pour proposer une pull request. Voir [`CONTRIBUTING.md`](CONTRIBUTING.md).
