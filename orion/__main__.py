@@ -65,6 +65,7 @@ def boucle_vocale(cfg, holo):
     from . import modeles
     from .bouche import LANGUES, Bouche, voix_pour
     from .config import RACINE, sauver
+    from .persona import salutation
     from .voix import Oreille, Profils
     if modeles.manquants(RACINE / "models"):
         holo.changer("execution", "Premier lancement : téléchargement des modèles…")
@@ -125,7 +126,7 @@ def boucle_vocale(cfg, holo):
         if not voix:
             return (f"Je n'ai pas de voix en {nom} sur cet ordinateur. Ouvre le panneau, onglet Voix : "
                     "je t'indiquerai comment en installer une.")
-        cfg.update(langue=code, voix_id=voix[0][0], langue_confirmee=True)
+        cfg.update(langue=code, voix_id=voix[0][0], langue_confirmee=True, genre=voix[0][3] or cfg["genre"])
         sauver(cfg)
         bouche.voix = voix[0][0]
         return f"D'accord, je parle maintenant en {nom}. Attention, je ne comprends toujours que le français."
@@ -133,10 +134,10 @@ def boucle_vocale(cfg, holo):
     if not cfg["langue_confirmee"]:
         confirmer_langue()
     elif not profils.data:
-        parler(f"Bonjour, je suis {cfg['nom']}. Pour que je reconnaisse chacun à sa voix, "
+        parler(f"{salutation(cfg)} Pour que je reconnaisse chacun à sa voix, "
                "double-clique sur moi et va dans l'onglet Famille.")
     else:
-        parler(f"Bonjour, je suis {cfg['nom']}.")
+        parler(salutation(cfg))
     while True:
         eveille = time.time() < eveil_jusqua
         holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else cfg["nom"])

@@ -11,6 +11,7 @@ import re
 import urllib.request
 
 from . import bible, knowledge, web
+from .persona import presentation
 from .texte import normaliser
 
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -105,8 +106,7 @@ class Cerveau:
             return (f"Tu es{prenom}." if prenom else "Je ne reconnais pas ta voix. "
                     "Tu peux l'enregistrer avec la commande enroler."), None
         if re.search(r"\b(qui es tu|comment tu t appelles|ton nom)\b", t):
-            return f"Je suis {self.cfg['nom']}, ton assistant. Je peux lancer ta musique, calculer, "\
-                   "et répondre sur les maths, la mécanique, l'électronique et le bâtiment.", None
+            return presentation(self.cfg), None
         if re.search(r"\b(merci)\b", t):
             return random.choice(["Avec plaisir.", "De rien !", "À ton service."]), None
         if re.search(r"\b(au revoir|bonne nuit|a plus)\b", t):

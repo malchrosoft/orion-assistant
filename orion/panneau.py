@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import knowledge, web
 from .bouche import LANGUES, Bouche, lister_voix
+from .persona import GENRES, salutation
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger, sauver
@@ -42,6 +43,7 @@ def theme(root):
     st.configure("Treeview.Heading", background=FOND, foreground=ACCENT)
     st.map("Treeview", background=[("selected", "#123040")])
     st.configure("TCheckbutton", background=FOND, foreground=TEXTE)
+    st.configure("TRadiobutton", background=FOND, foreground=TEXTE)
     st.configure("TEntry", foreground=TEXTE, insertcolor=ACCENT)
     root.option_add("*Listbox.background", SURFACE)
     root.option_add("*Listbox.foreground", TEXTE)
@@ -200,6 +202,13 @@ class Panneau:
 
         self.liste_tts = tk.Listbox(f, height=8)
         self.liste_tts.pack(fill="x")
+        self.liste_tts.bind("<<ListboxSelect>>", lambda e: self._proposer_genre())
+        ligne_genre = ttk.Frame(f)
+        ligne_genre.pack(fill="x", pady=4)
+        ttk.Label(ligne_genre, text=f"{self.cfg['nom']} se présente au :").pack(side="left")
+        self.genre_voix = tk.StringVar(value=self.cfg.get("genre", "neutre"))
+        for cle, libelle in GENRES.items():
+            ttk.Radiobutton(ligne_genre, text=libelle, value=cle, variable=self.genre_voix).pack(side="left", padx=4)
         boutons = ttk.Frame(f)
         boutons.pack(fill="x", pady=4)
         ttk.Button(boutons, text="▶ Écouter", command=self._tester_voix).pack(side="left")
@@ -228,8 +237,9 @@ class Panneau:
             self.voix_affichees = [v for v in lister_voix() if self.toutes.get() or code in v[2]]
         except Exception:  # pyttsx3 absent ou moteur vocal indisponible
             self.voix_affichees = []
-        for _, nom, codes in self.voix_affichees:
-            self.liste_tts.insert("end", f"{nom}  ({', '.join(sorted(codes)) or '?'})")
+        for _, nom, codes, genre in self.voix_affichees:
+            self.liste_tts.insert("end", f"{nom}  ({', '.join(sorted(codes)) or '?'})"
+                                         f"{'  · ' + GENRES[genre] if genre else ''}")
         if not self.voix_affichees:
             self.liste_tts.insert("end", f"Aucune voix en {self.langue.get()} : voir l'aide ci-dessous.")
 
@@ -237,17 +247,24 @@ class Panneau:
         sel = self.liste_tts.curselection()
         return self.voix_affichees[sel[0]] if sel and self.voix_affichees else None
 
+    def _proposer_genre(self):
+        """Accorde la présentation à la voix choisie quand son genre est connu ; sinon on garde le réglage."""
+        v = self._voix_selectionnee()
+        if v and v[3]:
+            self.genre_voix.set(v[3])
+
     def _tester_voix(self):
         v = self._voix_selectionnee()
         if v:
             bouche = Bouche(dict(self.cfg, voix_id=v[0]))
-            threading.Thread(target=lambda: (bouche.dire(f"Bonjour, je suis {self.cfg['nom']}."),
+            threading.Thread(target=lambda: (bouche.dire(salutation(dict(self.cfg, genre=self.genre_voix.get()))),
                                              bouche.proc.kill()), daemon=True).start()
 
     def _choisir_voix(self):
         v = self._voix_selectionnee()
         if v:
-            self.cfg.update(langue=self._code_langue(), voix_id=v[0], langue_confirmee=True)
+            self.cfg.update(langue=self._code_langue(), voix_id=v[0], langue_confirmee=True,
+                            genre=self.genre_voix.get())
             sauver(self.cfg)
             messagebox.showinfo("Voix", f"{self.cfg['nom']} utilisera la voix {v[1]}.")
 

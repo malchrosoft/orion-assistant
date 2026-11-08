@@ -38,7 +38,7 @@ Pour l'ouvrir : `python -m orion panneau`, ou un double-clic sur l'hologramme.
 |---|---|
 | Discussion | Discuter au clavier ; chaque réponse affiche ses sources, cliquables |
 | Savoir | Fiches, **apprendre depuis un lien**, oublier, vérifier les références en ligne |
-| Voix | Langue et voix d'Orion, écoute d'essai, **aide pour installer des voix** selon l'OS (bouton vers les réglages système, recherche internet type) |
+| Voix | Langue et voix d'Orion, écoute d'essai, **façon de se présenter** (neutre par défaut, simplement « Orion » ; féminin ou masculin, proposé selon la voix choisie), **aide pour installer des voix** selon l'OS (bouton vers les réglages système, recherche internet type) |
 | Famille | Enregistrer ou supprimer la voix d'un membre de la famille |
 | Réglages | Nom, mots d'éveil, AIMP, dossier de musique, exigence de reconnaissance, IA locale |
 

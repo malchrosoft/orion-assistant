@@ -19,15 +19,16 @@ NOMS_ANGLAIS = {"fr": "french", "en": "english", "es": "spanish", "de": "german"
 
 
 def lister_voix():
-    """[(id, nom, codes langue détectés)] des voix installées sur le système."""
+    """[(id, nom, codes langue détectés, genre ou None)] des voix installées sur le système."""
     import pyttsx3
+    from .persona import genre_de_voix
     moteur = pyttsx3.init()
     resultat = []
     for v in moteur.getProperty("voices"):
         infos = f"{v.id} {v.name} {getattr(v, 'languages', '')}".lower()
         codes = {c for c, nom in NOMS_ANGLAIS.items()
                  if nom in infos or LANGUES[c] in infos or f"{c}_" in infos or f"{c}-" in infos}
-        resultat.append((v.id, v.name, codes))
+        resultat.append((v.id, v.name, codes, genre_de_voix(v.name, getattr(v, "gender", None))))
     return resultat
 
 

@@ -19,7 +19,8 @@ DEFAUT = {
     "voix_vitesse": 175,
     "langue": "fr",                      # langue de la voix d'Orion (la compréhension reste en français)
     "langue_confirmee": False,           # au premier lancement, Orion demande confirmation à voix haute
-    "voix_id": "",                       # voix choisie dans le panneau ; vide = première voix de la langue
+    "voix_id": "",
+    "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin                       # voix choisie dans le panneau ; vide = première voix de la langue
     "aimp_exe": r"C:\Program Files\AIMP\AIMP.exe",
     "dossier_musique": "",
     "hologramme": {"taille": 360, "toujours_devant": True, "transparent": True},
