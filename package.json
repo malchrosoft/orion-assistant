@@ -1,0 +1,16 @@
+{
+  "name": "orion-assistant",
+  "private": true,
+  "description": "Raccourcis de développement d'Orion (aucune dépendance npm : appels à orion.sh / .venv)",
+  "scripts": {
+    "start": "sh orion.sh",
+    "holo": "sh orion.sh holo",
+    "panneau": "sh orion.sh panneau",
+    "texte": "sh orion.sh texte",
+    "limite": "sh orion.sh limite",
+    "dossiers": "sh orion.sh dossiers",
+    "verifier": "sh orion.sh verifier",
+    "savoir": "sh orion.sh savoir",
+    "build": ".venv/bin/pip install -q pyinstaller && .venv/bin/python build_exe.py"
+  }
+}

@@ -19,13 +19,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest      # Windows 10/11 64 bits
-          - os: macos-14            # Apple Silicon
-          - os: macos-13            # Mac Intel
+          - os: macos-15            # Apple Silicon
+          - os: macos-15-intel      # Mac Intel
           - os: ubuntu-22.04        # glibc 2.35 : compatible avec les distributions de 2022 et plus récentes
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Version
@@ -54,7 +54,7 @@ jobs:
       - name: Paquets Linux (.deb, .tar.gz)
         if: runner.os == 'Linux'
         run: sh packaging/linux/creer_deb.sh "$VERSION"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: orion-${{ matrix.os }}
           path: |
@@ -69,7 +69,7 @@ jobs:
     needs: construire
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: paquets
           merge-multiple: true

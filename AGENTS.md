@@ -11,6 +11,9 @@ Rappels pour travailler sur ce dépôt (humains et agents IA).
 
 ## Lancer et tester
 
+Raccourcis (sans dépendance npm) : `npm start`, `npm run holo`, `npm run panneau`, `npm run texte`,
+`npm run limite`, `npm run build`. Ils utilisent `.venv/` (Python 3.12 avec Tkinter).
+
 ```sh
 python3 -m orion texte      # sans micro ni modèle : vérifie compréhension, calcul, savoir, sources
 python3 -m orion savoir     # réindexe après modification de orion/data/*.json
