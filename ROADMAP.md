@@ -92,6 +92,8 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Traits de la voix en plus de l'empreinte : hauteur, trois premiers formants (prédiction linéaire),
+  brillance du timbre et débit ; appris par personne, ils départagent les voix proches.
 - Mémoire sur soi plus fine : « oublie ça / cette histoire / ce que tu viens de dire » n'efface que
   l'échange juste avant ; « cherche dans ta mémoire sur moi à propos de… » retrouve les souvenirs et
   échanges contenant ces mots, les cite, puis les efface sur confirmation.

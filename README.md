@@ -56,7 +56,7 @@ Avec la souris : **clic** = écouter (s'acharner sur l'hologramme lui fait deman
 
 ## Chaque personne, à sa façon
 
-- **Reconnaissance à la voix** : « mémorise ma voix, je suis… » (cinq phrases à lire), ou dans le panneau. Orion affine chaque profil au fil des échanges : plusieurs empreintes par personne, et la **hauteur moyenne de la voix** pour départager les voix proches.
+- **Reconnaissance à la voix** : « mémorise ma voix, je suis… » (cinq phrases à lire), ou dans le panneau. Orion affine chaque profil au fil des échanges : plusieurs empreintes par personne, et des **traits de la voix** pour départager les voix proches : hauteur, formants (liés à la taille du conduit vocal, qui distinguent bien un enfant d'un adulte), brillance du timbre et débit.
 - **En cas de doute**, il demande « qui parle, Irina ou Éléonore ? ». S'il se trompe, dites « tu te trompes, c'est … » : il bascule sur la bonne personne et apprend. Le panneau montre les ressemblances entre les voix.
 - **Sa couleur** : « ma couleur est le vert » teinte le halo quand Orion vous reconnaît.
 - **Tutoiement ou vouvoiement** : demandé au premier échange, retenu pour chaque voix.
