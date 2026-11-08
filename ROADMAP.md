@@ -12,7 +12,7 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
   dans son calendrier (Calendrier macOS, Outlook, ou fichier .ics à importer). Il pose les questions
   manquantes une à une : date, heure, durée, lieu, invités (avec confirmation de chaque adresse), rappel.
   Chaque membre de la famille choisit son calendrier dans le panneau, onglet Famille.
-- **Plusieurs comptes à rebours nommés** (« le minuteur des pâtes »), et reprise après un redémarrage.
+- **Reprise des comptes à rebours** après un redémarrage d'Orion.
 
 ### Savoir et publications
 - **Recherche par le sens** dans les publications téléchargées (petit modèle local d'« embeddings »,
@@ -92,6 +92,13 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Comptes à rebours nommés, jusqu'à trois à la fois, chacun avec sa couleur (anneaux concentriques) et sa note (bip de départ et bips de fin à la même hauteur) ;
+  annonce de fin par leur nom ; demandes plus tolérantes (« compte 5 minutes », « décompte 30 s »,
+  « préviens-moi dans un quart d'heure »).
+- Bibliothèque de documents depuis une URL (internet ou intranet) ou un fichier : EPUB, PDF, Word,
+  Markdown, texte, HTML, indexés par passages et cités avec la page ou la section.
+- Panneau : mémoire de chaque personne (recherche, suppression) ; comparateur de voix mis à jour en
+  direct pendant la conversation, ressemblances en pourcentage.
 - Traits de la voix en plus de l'empreinte : hauteur, trois premiers formants (prédiction linéaire),
   brillance du timbre et débit ; appris par personne, ils départagent les voix proches.
 - Mémoire sur soi plus fine : « oublie ça / cette histoire / ce que tu viens de dire » n'efface que

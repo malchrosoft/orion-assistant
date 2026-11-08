@@ -31,8 +31,8 @@
  },
  {
   "titre": "Compte à rebours",
-  "motscles": "compte rebours minuteur minuterie chrono timer temps reste annuler bip sonnerie",
-  "contenu": "Dis « compte à rebours de 5 minutes ». Il s'affiche sur mon hologramme ; à la fin, je bipe cinq fois, puis je préviens la personne qui l'a demandé si personne n'a cliqué. « Combien de temps reste-t-il ? » et « annule le minuteur » marchent aussi."
+  "motscles": "compte rebours minuteur minuterie chrono timer temps reste annuler bip sonnerie nom nommer plusieurs pates gateau couleur",
+  "contenu": "Dis « minuteur des pâtes de 10 minutes » ou « 5 minutes pour le gâteau » : jusqu'à trois en même temps, chacun avec son nom et sa couleur sur mon hologramme. À la fin, je bipe, puis j'annonce lequel est terminé. « Combien de temps reste-t-il ? », « annule le minuteur des pâtes » ou « annule tous les minuteurs » marchent aussi."
  },
  {
   "titre": "Météo",
@@ -53,6 +53,11 @@
   "titre": "Fiches et documents",
   "motscles": "fiche pdf document resume imprimer generer dossier word docx markdown html page web exporter enregistrer reponse rapport professionnel qualite pro latex",
   "contenu": "Dis « fais une fiche sur le théorème de Pythagore » pour un PDF avec ses sources. Après une réponse, dis « fais-en un document Word », « exporte ça en Markdown », « en page web » ou « en PDF », ou « en rapport de qualité pro » : je l'enregistre dans tes documents et je te propose de l'ouvrir."
+ },
+ {
+  "titre": "Ma bibliothèque de documents",
+  "motscles": "bibliotheque document documents pdf epub word docx markdown texte url lien intranet fichier ajouter indexer",
+  "contenu": "Copie l'adresse d'un document (PDF, EPUB, Word, Markdown, texte ou page web, sur internet ou l'intranet) ou le chemin d'un fichier, puis dis « ajoute le lien copié » : je l'indexe et je le cite, page ou section comprise. « Quels documents as-tu ? » les liste."
  },
  {
   "titre": "Bible et textes du jour",

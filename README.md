@@ -50,7 +50,7 @@ Avec la souris : **clic** = écouter (s'acharner sur l'hologramme lui fait deman
 | Violet | Agit (téléchargement, rédaction d'un document…) |
 
 - **Pendant une lecture**, le texte défile sur quatre lignes, au rythme de la voix.
-- **Compte à rebours** : un arc lumineux se vide autour du visage, avec de grands chiffres. Les dix dernières secondes passent au rouge. À la fin, Orion fait cinq bips lents ; sans clic, il prévient la personne qui l'avait demandé.
+- **Comptes à rebours** : un anneau lumineux par minuteur, dans sa couleur, se vide autour du visage ; le plus proche de la fin s'affiche en grands chiffres avec son nom, les autres en petit dessous. Les dix dernières secondes passent au rouge. À la fin, Orion fait cinq bips lents ; sans clic, il prévient la personne qui l'avait demandé.
 - **Rédaction d'un document** : une feuille lumineuse s'écrit à côté du visage.
 - **En haut** : la personne reconnue (dans sa couleur) et la dernière action menée.
 
@@ -71,7 +71,7 @@ Avec la souris : **clic** = écouter (s'acharner sur l'hologramme lui fait deman
 ## Météo, minuteurs, blagues et ordinateur
 
 - **Météo** dite à voix haute, depuis [Open-Meteo](https://open-meteo.com) (données ouvertes) : aujourd'hui, demain, un jour de la semaine. Orion demande votre ville la première fois, ou la devine d'après votre connexion si vous lui dites « devine ». « Montre-moi la météo » l'affiche à l'écran.
-- **Comptes à rebours** internes, consultables (« combien de temps reste-t-il ? ») et annulables.
+- **Comptes à rebours** internes, **nommés** (« minuteur des pâtes de 10 minutes ») et **jusqu'à trois à la fois**, chacun avec sa couleur et **sa note** (do, mi, sol : un bip au départ, les mêmes bips à la fin, pour le reconnaître à l'oreille) ; consultables (« combien de temps reste-t-il ? ») et annulables un par un ou tous ensemble. Orion annonce à la fin lequel est terminé.
 - **Blagues** pour toute la famille, choisies et relues, sans répétition avant d'avoir tout dit.
 - **L'ordinateur, en lecture seule** : espace libre, disques branchés, système, processeur, mémoire, version d'Orion ; recherche de fichiers et de dossiers dans votre dossier personnel, puis « ouvre le premier ». Orion n'y modifie rien.
 
@@ -87,6 +87,10 @@ Avec la souris : **clic** = écouter (s'acharner sur l'hologramme lui fait deman
 
 Orion peut télécharger, à votre demande, des **publications EPUB proposées librement par leur éditeur**, en annonçant leur taille avant. Il les range dans vos documents, les **indexe** pour y chercher par thème, vérifie au démarrage qu'elles sont intactes, et peut y lire un passage précis. Pour une publication qu'il ne connaît pas, il ouvre la recherche du site de l'éditeur : vous choisissez, copiez le lien de téléchargement, puis dites « télécharge le lien copié ». Les documents générés à partir de ces publications citent la publication, l'emplacement exact et la source d'origine.
 
+## Bibliothèque de documents
+
+Donnez à Orion des documents à consulter : **EPUB, PDF, Word (.docx), Markdown, texte ou page HTML**, depuis une **URL** (internet ou **intranet**) ou un **fichier de l'ordinateur**. Copiez l'adresse ou le chemin puis dites « ajoute le lien copié », ou passez par le panneau (onglet Savoir, « Apprendre depuis une URL ou un fichier »). Orion découpe le document en passages, les indexe sur l'ordinateur, et répond ensuite en citant le document et la page ou la section. Comme tout contenu ajouté, il reste « non vérifié ». Les documents téléchargés vont dans `Documents/Orion/Bibliothèque` ; un fichier local est indexé sur place, sans copie. « Quels documents as-tu ? » les liste, « retire le document … » en retire un de l'index.
+
 ## Le panneau (interface graphique facultative)
 
 Pour l'ouvrir : un double-clic sur l'hologramme, `npm run panneau` ou `python -m orion panneau`.
@@ -94,10 +98,10 @@ Pour l'ouvrir : un double-clic sur l'hologramme, `npm run panneau` ou `python -m
 | Onglet | Contenu |
 |---|---|
 | Discussion | Discuter au clavier ; chaque réponse affiche ses sources, cliquables |
-| Savoir | Fiches, **apprendre depuis un lien**, oublier, vérifier les références ; **télécharger une publication par son lien** |
+| Savoir | Fiches et bibliothèque, **apprendre depuis une URL (internet ou intranet) ou un fichier**, oublier, vérifier les références ; télécharger une publication par son lien |
 | Voix | Langue et voix d'Orion, écoute d'essai, façon de se présenter (neutre, féminin ou masculin), **voix naturelles** |
 | Langues | Ajouter ou retirer des langues de discussion, avec l'espace nécessaire annoncé avant |
-| Famille | Enregistrer ou supprimer une voix, **choisir sa couleur**, **comparer les voix** |
+| Famille | Enregistrer ou supprimer une voix, **choisir sa couleur**, **comparer les voix** (en direct, en %), **mémoire** de chacun (recherche et suppression) |
 | Réglages | Espace disque, dossiers d'enregistrement, nom et prononciation, mots d'éveil, musique, **bip d'écoute**, **seuil de reconnaissance des voix** (commenté), modèle de conversation |
 
 Un bouton **Crédits (PDF)** produit la liste des composants utilisés, avec leurs auteurs et licences.
