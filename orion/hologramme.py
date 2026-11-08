@@ -42,6 +42,17 @@ ECLAT = {"veille": 0.55, "ecoute": 1.0, "reflexion": 0.9, "parole": 1.0, "execut
 AGITATION = {"veille": 0.5, "ecoute": 0.18, "reflexion": 0.45, "parole": 0.22, "execution": 0.8}
 
 
+def icone(fenetre):
+    """Logo d'Orion comme icône de la fenêtre (barre des tâches, Dock) ; sans lui, l'icône par défaut."""
+    from .config import DATA
+    try:
+        image = tk.PhotoImage(file=str(DATA / "logos" / "orion.png"))
+        fenetre.iconphoto(True, image)
+        fenetre._icone = image  # garder une référence, sinon Tk l'oublie
+    except (tk.TclError, AttributeError):
+        pass
+
+
 def _rvb(c):
     return [int(c[i:i + 2], 16) for i in (1, 3, 5)]
 
@@ -247,6 +258,8 @@ class Hologramme:
         c.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
         c.bind("<Button-2>", lambda e: menu.tk_popup(e.x_root, e.y_root))  # macOS
         c.bind("<Double-Button-1>", self._double_clic)
+        icone(self.root)
+        self._ecran_chargement()
         self.root.after(50, self._garder_visible)  # au chargement, une fois la taille réelle connue
         self._animer()
 
@@ -292,6 +305,27 @@ class Hologramme:
         """Tâche en cours (appelable depuis n'importe quel thread) : texte en petit, barre si la fraction (0 à 1)
         est connue. progression("") efface tout."""
         self.statut_texte, self.statut_fraction = texte, fraction
+
+    def _ecran_chargement(self):
+        """Logo d'Orion par-dessus l'hologramme pendant le démarrage (modèles à charger) ; fin_chargement()
+        le retire, et il s'efface de lui-même au bout de 30 s au plus."""
+        from .config import DATA
+        fichier = DATA / "logos" / "ecran-chargement.png"
+        self._ecran = None
+        try:
+            image = tk.PhotoImage(file=str(fichier))
+            reduction = max(1, -(-int(image.width()) // int(self.taille)))  # entier : le logo tient dans la fenêtre
+        except (tk.TclError, AttributeError, TypeError, ValueError):
+            return
+        self._image_ecran = image.subsample(reduction) if reduction > 1 else image
+        self._ecran = self.toile.create_image(self.taille / 2, (self.taille + 70) / 2, image=self._image_ecran)
+        self.root.after(30000, self.fin_chargement)
+
+    def fin_chargement(self):
+        """Retire l'écran de chargement (appelable depuis n'importe quel thread)."""
+        if getattr(self, "_ecran", None):
+            ecran, self._ecran = self._ecran, None
+            self.root.after(0, lambda: self.toile.delete(ecran))
 
     def redaction(self, format_):
         """Format en cours de rédaction (« PDF », « DOCX »…) ou None. Appelable depuis n'importe quel thread."""

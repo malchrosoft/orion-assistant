@@ -67,6 +67,8 @@ class Panneau:
         self.root.geometry(f"{l}x{h}+{(self.root.winfo_screenwidth() - l) // 2}"
                            f"+{max(0, (self.root.winfo_screenheight() - h) // 2 - 20)}")
         theme(self.root)
+        from .hologramme import icone
+        icone(self.root)
         onglets = ttk.Notebook(self.root)
         onglets.pack(fill="both", expand=True)
         for titre, construire in (("Discussion", self._discussion), ("Savoir", self._savoir),

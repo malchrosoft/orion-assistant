@@ -328,6 +328,7 @@ def boucle_vocale(cfg, holo):
             return f"D'accord, ma voix est maintenant en {nom}."
         return ""
 
+    holo.fin_chargement()  # modèles chargés : l'écran de chargement laisse place à l'hologramme
     print(f"{cfg['nom']} est prêt. Dites « dis-moi {cfg['nom']} » (ou « dis {cfg['nom']} », « hey {cfg['nom']} »), puis votre demande. "
           "Ce terminal affiche ce qu'il entend.",
           flush=True)
