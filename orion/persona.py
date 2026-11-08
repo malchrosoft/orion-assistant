@@ -10,9 +10,10 @@ GENRES = {"neutre": "neutre (simplement « Orion »)", "feminin": "féminin", "m
 # Prénoms de voix système courants, quand le moteur ne précise pas le genre (SAPI, macOS, eSpeak)
 VOIX_FEMININES = ("hortense", "julie", "amelie", "amélie", "audrey", "aurelie", "marie", "virginie", "denise",
                   "zira", "hazel", "susan", "samantha", "victoria", "karen", "moira", "tessa", "fiona",
-                  "helena", "monica", "paulina", "alice", "anna", "sara", "joana", "female", "femme")
+                  "helena", "monica", "paulina", "alice", "anna", "sara", "joana", "flo", "grandma", "sandy",
+                  "shelley", "female", "femme")
 VOIX_MASCULINES = ("thomas", "paul", "nicolas", "daniel", "david", "mark", "george", "alex", "fred", "jorge",
-                   "diego", "luca", "yannick", "male", "homme")
+                   "diego", "luca", "yannick", "eddy", "grandpa", "jacques", "reed", "rocko", "male", "homme")
 
 
 def genre_de_voix(nom, genre_moteur=None):

@@ -31,13 +31,16 @@ DONNEES.mkdir(parents=True, exist_ok=True)
 DEFAUT = {
     "nom": "Orion",                      # nom de l'assistant = mot d'éveil
     "mots_eveil": ["orion"],             # variantes acceptées (minuscules, sans accents)
-    "fenetre_conversation_s": 8,         # après une réponse, pas besoin de redire le nom
+    "fenetre_conversation_s": 8,         # quand Orion vient de poser une question, on peut répondre sans le nom
+    "formules_eveil": ["hey", "he", "eh", "et", "dis", "dit", "di", "j", "ok"],  # « hey Orion », « dis Orion » (+ transcriptions)
     "modele_vosk": "models/vosk-model-small-fr-0.22",
     "modele_locuteur": "models/vosk-model-spk-0.4",
-    "seuil_locuteur": 0.55,              # similarité cosinus minimale pour reconnaître quelqu'un
+    "seuil_locuteur": 0.55,
+    "confiance_min": 0.6,                # en dessous, Orion dit « je n'ai pas bien compris » au lieu de répondre              # similarité cosinus minimale pour reconnaître quelqu'un
     "voix_vitesse": 175,
     "langue": "fr",                      # langue de la voix d'Orion (la compréhension reste en français)
     "langue_confirmee": False,           # au premier lancement, Orion demande confirmation à voix haute
+    "voix_piper": "",                    # voix naturelle Piper (siwis, jessica, pierre, gilles) ; vide = voix système
     "voix_id": "",                       # voix choisie dans le panneau ; vide = première voix de la langue
     "limite_disque_mo": 1024,            # espace maximal des données d'Orion (hors documents générés)
     "dossiers": {},                      # {mot-clé: chemin} où enregistrer les PDF ; vide = Documents/Orion
@@ -47,8 +50,9 @@ DEFAUT = {
     "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin
     "aimp_exe": r"C:\Program Files\AIMP\AIMP.exe",
     "dossier_musique": "",
-    "hologramme": {"taille": 360, "toujours_devant": True, "transparent": True},
-    "llm": {"actif": False, "url": "http://localhost:11434/api/generate", "modele": "qwen2.5:0.5b"},
+    "hologramme": {"taille": 420, "toujours_devant": True, "transparent": True,
+                   "densite": 800},           # points du visage : baisser (400) sur une machine modeste
+    "conversation": {},                  # discussion libre (voir orion/conversation.py : modèle local, Claude)
 }
 
 

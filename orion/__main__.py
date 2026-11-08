@@ -13,6 +13,7 @@
   python -m orion limite [Mo]  affiche l'espace occupé, ou change la limite (avec confirmation)
   python -m orion dossiers [ajouter MOT CHEMIN | retirer MOT | defaut MOT]   dossiers d'enregistrement des PDF
 """
+import math
 import sys
 import threading
 import time
@@ -21,7 +22,7 @@ from . import knowledge
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger
-from .texte import normaliser, sans_accents
+from .texte import normaliser, sans_accents, trouver_eveil, trouver_nom
 
 
 def mode_texte(cfg):
@@ -114,6 +115,7 @@ def _langue_demandee(t):
 
 
 def boucle_vocale(cfg, holo):
+    import random
     import re
     from . import modeles
     from .bouche import LANGUES, Bouche, voix_pour
@@ -132,6 +134,7 @@ def boucle_vocale(cfg, holo):
     oreille, bouche = Oreille(cfg), Bouche(cfg)
     profils, cerveau = Profils(cfg["seuil_locuteur"]), Cerveau(cfg, Actions(cfg))
     holo.sur_silence = bouche.interrompre  # clic droit → « Se taire »
+    holo.source_niveau = lambda: oreille.niveau  # l'anneau ondule avec le son du micro
     cerveau.signaler_inconnu = bool(profils.data)  # « je n'ai pas reconnu ta voix » seulement si la famille est enregistrée
     eveil_jusqua = 0.0
 
@@ -147,7 +150,7 @@ def boucle_vocale(cfg, holo):
             entendu, final, _ = oreille.lire()
             nouveaux = " ".join(m for m in normaliser(entendu).split() if m not in dits)
             if nouveaux and (re.search(STOP, nouveaux) or stop_lexique(entendu)
-                             or any(m in nouveaux for m in cfg["mots_eveil"])):
+                             or trouver_nom(nouveaux, cfg["mots_eveil"], debut_seulement=False)[0]):
                 bouche.interrompre()
                 holo.changer("ecoute", "Je t'écoute…")
                 return False  # on garde ce que l'utilisateur est en train de dire
@@ -178,11 +181,24 @@ def boucle_vocale(cfg, holo):
         message = changer_langue(code) if code != cfg["langue"] else ""
         return f"D'accord, on parle maintenant en {langues.nom(code)}. {message}".strip()
 
+    def enregistrer_voix(prenom):
+        """Enregistrement de la voix pendant la conversation : 5 phrases, puis confirmation orale."""
+        vecteurs = []
+        while len(vecteurs) < 5:
+            holo.changer("ecoute", f"Voix de {prenom} : phrase {len(vecteurs) + 1}/5")
+            texte, empreinte = ecouter(True)
+            if empreinte:
+                vecteurs.append(empreinte)
+                print(f"[voix de {prenom} {len(vecteurs)}/5] {texte}", flush=True)
+        profils.enregistrer(prenom, vecteurs)
+        parler(f"C'est fait, {prenom} : je reconnaîtrai ta voix.")
+
     def ecouter(eveille):
         """Attend une phrase complète, en affichant les mots au fur et à mesure."""
         while True:
             texte, final, empreinte = oreille.lire(0.5)
-            if texte and not final and (eveille or any(m in normaliser(texte) for m in cfg["mots_eveil"])):
+            if texte and not final and (eveille or trouver_eveil(texte, cfg["mots_eveil"],
+                                                                   cfg["formules_eveil"])[0]):
                 holo.changer("ecoute", texte)
             if final and texte:
                 return texte, empreinte
@@ -217,6 +233,9 @@ def boucle_vocale(cfg, holo):
             return f"D'accord, ma voix est maintenant en {nom}."
         return ""
 
+    print(f"{cfg['nom']} est prêt. Dites « hey {cfg['nom']} » ou « dis {cfg['nom']} », puis votre demande. "
+          "Ce terminal affiche ce qu'il entend.",
+          flush=True)
     if not cfg["langue_confirmee"]:
         confirmer_langue()
     elif not profils.data:
@@ -224,25 +243,50 @@ def boucle_vocale(cfg, holo):
                "double-clique sur moi et va dans l'onglet Famille.")
     else:
         parler(salutation(cfg))
+    from . import composants
+    manque = composants.manquants(cfg)
+    if manque:
+        parler("Au fait, je peux m'installer " + " et ".join(composants.LIBELLES[g] for g, _ in manque)
+               + ". Dis-moi « installe ce qui te manque » quand tu veux.")
+    # Pas d'écoute constante : Orion ne réagit qu'à « hey Orion » / « dis Orion », ou juste après avoir posé
+    # une question (pour qu'on puisse répondre « oui » sans répéter la formule).
+    eveil_jusqua = 0.0
+    dernier_locuteur = None
+    formule = f"dis {cfg['nom']}"
     while True:
         eveille = time.time() < eveil_jusqua
-        holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else cfg["nom"])
+        holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else f"« {formule} »")
         texte, empreinte = ecouter(eveille)
         t = normaliser(texte)
-        if not eveille and not any(m in t[:30] or m in texte.lower()[:30] for m in cfg["mots_eveil"]):
+        nomme, sans_nom = trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])
+        print(f"[entendu{' (éveillé)' if eveille else ''}{' · formule reconnue' if nomme else ''} · confiance "
+              f"{oreille.confiance:.2f}] {texte}", flush=True)
+        if not eveille and not nomme:
+            continue
+        if nomme and not sans_nom.strip():  # « dis Orion » seul : couleur d'écoute, puis on attend la demande
+            holo.changer("ecoute", "Je t'écoute…")
+            parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
+            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
+            continue
+        if oreille.confiance < cfg["confiance_min"]:
+            parler(random.choice(["Pardon, je n'ai pas bien compris.", "Tu peux répéter ?",
+                                  "Je n'ai pas bien entendu, tu peux répéter ?"]))
+            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
         if stop_lexique(texte) and len(texte.split()) <= 3:
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
-        reste = re.sub(STOP, "", t)
-        for m in cfg["mots_eveil"]:
-            reste = reste.replace(m, "")
+        reste = re.sub(STOP, "", sans_nom)
         if not reste.strip():  # juste « stop » ou « Orion, tais-toi » : on se tait et on écoute
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
         locuteur = profils.identifier(empreinte)
+        # continuité : une phrase courte ou peu claire en pleine discussion vient du même interlocuteur
+        if locuteur == "invité" and eveille and dernier_locuteur not in (None, "invité"):
+            locuteur = dernier_locuteur
+        dernier_locuteur = locuteur
         holo.changer("reflexion", f"{locuteur} : {texte}")
-        phrase_fr = cerveau.en_francais(texte, discussion, traducteur)
+        phrase_fr = cerveau.en_francais(sans_nom if nomme else texte, discussion, traducteur)
         t_fr = normaliser(phrase_fr)
         m = re.search(r"\b(?:parle|parlons|discutons|discute|on parle)(?: avec moi)? en (\w+)", t_fr)
         code = _langue_demandee(m.group(1)) if m else None
@@ -253,11 +297,20 @@ def boucle_vocale(cfg, holo):
         if tache:
             holo.changer("execution", "J'exécute…")
             reponse = tache()
+        print(f"[{cfg['nom']}] {reponse}", flush=True)
         dire(reponse)
-        eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
+        if cerveau.demande_enrolement:
+            enregistrer_voix(cerveau.demande_enrolement)
+            cerveau.demande_enrolement = None
+        profils.data = Profils(cfg["seuil_locuteur"]).data  # voix ajoutées ou retirées entre-temps
+        # reste à l'écoute seulement si Orion attend une réponse (question posée), sinon se rendort
+        attend = (reponse or "").rstrip().endswith("?") or cerveau.en_attente or cerveau.question_tutoiement \
+            or cerveau.oubli_a_confirmer or cerveau.retrait_voix
+        eveil_jusqua = time.time() + cfg["fenetre_conversation_s"] if attend else 0.0
 
 
 def demo_holo(holo):
+    holo.source_niveau = lambda: abs(math.sin(time.time() * 3.1) * math.sin(time.time() * 1.7))
     for etat in ["veille", "ecoute", "reflexion", "parole", "execution"] * 50:
         holo.changer(etat, etat)
         time.sleep(3)

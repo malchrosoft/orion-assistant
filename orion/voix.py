@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
 # SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Écoute (Vosk, hors ligne) + reconnaissance du locuteur par empreinte vocale (x-vector Vosk)."""
+import array
 import json
 import math
 import queue
@@ -43,6 +44,8 @@ class Oreille:
         SetLogLevel(-1)
         self.file = queue.Queue()
         self.muet = False
+        self.confiance = 1.0
+        self.niveau = 0.0
         spk = UTILISATEUR / cfg["modele_locuteur"]
         self._spk = SpkModel(str(spk)) if spk.exists() else None
         self.charger(cfg.get("chemin_vosk") or UTILISATEUR / cfg["modele_vosk"])
@@ -54,11 +57,17 @@ class Oreille:
         """(Re)charge le modèle de reconnaissance, par exemple pour changer de langue de discussion."""
         from vosk import KaldiRecognizer, Model
         reco = KaldiRecognizer(Model(str(chemin_modele)), 16000)
+        reco.SetWords(True)  # confiance mot par mot : on ignore les transcriptions douteuses
         if self._spk:
             reco.SetSpkModel(self._spk)  # l'empreinte vocale ne dépend pas de la langue
         self.reco = reco
 
     def _recevoir(self, donnees, *_):
+        # Volume instantané (0 à 1) pour l'hologramme : un échantillon sur huit suffit, sans numpy
+        echantillons = array.array("h", bytes(donnees))[::8]
+        if echantillons:
+            rms = math.sqrt(sum(e * e for e in echantillons) / len(echantillons))
+            self.niveau = min(1.0, rms / 3000)
         if not self.muet:
             self.file.put(bytes(donnees))
 
@@ -75,6 +84,8 @@ class Oreille:
             return "", False, None
         if self.reco.AcceptWaveform(bloc):
             r = json.loads(self.reco.Result())
+            mots = r.get("result", [])
+            self.confiance = sum(m.get("conf", 1) for m in mots) / len(mots) if mots else 0.0
             return r.get("text", ""), True, r.get("spk")
         return json.loads(self.reco.PartialResult()).get("partial", ""), False, None
 
