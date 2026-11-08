@@ -19,18 +19,21 @@ from . import knowledge
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger
-from .texte import normaliser
+from .texte import normaliser, sans_accents
 
 
 def mode_texte(cfg):
+    from . import langues
     cerveau = Cerveau(cfg, Actions(cfg))
-    print(f"{cfg['nom']} (mode texte) — Ctrl+C pour quitter")
+    langue = cfg["langue_discussion"] if langues.installee(cfg["langue_discussion"]) else "fr"
+    traducteur = langues.Traducteur()
+    print(f"{cfg['nom']} (mode texte, {langues.nom(langue)}) — Ctrl+C pour quitter")
     while True:
         try:
             phrase = input("toi > ")
         except (EOFError, KeyboardInterrupt):
             return
-        reponse, tache = cerveau.repondre(phrase, "invité")
+        reponse, tache = cerveau.repondre_dans(phrase, "invité", langue, traducteur)
         print(f"{cfg['nom']} > {tache() if tache else reponse}")
         for src in (cerveau.derniere_fiche or {}).get("sources", []) if not tache else []:
             print(f"     [{src['niveau']}] {'source' if src['portee'] == 'fiche' else 'pour aller plus loin'} : "
@@ -64,16 +67,22 @@ def boucle_vocale(cfg, holo):
     import re
     from . import modeles
     from .bouche import LANGUES, Bouche, voix_pour
-    from .config import RACINE, sauver
+    from .config import UTILISATEUR, sauver
     from .persona import salutation
     from .voix import Oreille, Profils
-    if modeles.manquants(RACINE / "models"):
+    if modeles.manquants(UTILISATEUR / "models"):
         holo.changer("execution", "Premier lancement : téléchargement des modèles…")
-        modeles.installer(RACINE / "models")
+        modeles.installer(UTILISATEUR / "models")
+    from . import langues
     holo.changer("reflexion", "Chargement…")
+    discussion = cfg["langue_discussion"] if langues.installee(cfg["langue_discussion"]) else "fr"
+    if discussion != "fr":
+        cfg["chemin_vosk"] = str(langues.chemin_modele_vosk(discussion))
+    traducteur = langues.Traducteur()
     oreille, bouche = Oreille(cfg), Bouche(cfg)
     profils, cerveau = Profils(cfg["seuil_locuteur"]), Cerveau(cfg, Actions(cfg))
     holo.sur_silence = bouche.interrompre  # clic droit → « Se taire »
+    cerveau.signaler_inconnu = bool(profils.data)  # « je n'ai pas reconnu ta voix » seulement si la famille est enregistrée
     eveil_jusqua = 0.0
 
     def parler(texte):
@@ -87,12 +96,37 @@ def boucle_vocale(cfg, holo):
         while not fini.is_set():
             entendu, final, _ = oreille.lire()
             nouveaux = " ".join(m for m in normaliser(entendu).split() if m not in dits)
-            if nouveaux and (re.search(STOP, nouveaux) or any(m in nouveaux for m in cfg["mots_eveil"])):
+            if nouveaux and (re.search(STOP, nouveaux) or stop_lexique(entendu)
+                             or any(m in nouveaux for m in cfg["mots_eveil"])):
                 bouche.interrompre()
                 holo.changer("ecoute", "Je t'écoute…")
                 return False  # on garde ce que l'utilisateur est en train de dire
         oreille.vider()
         return True
+
+    def stop_lexique(entendu):
+        """« Stop » dans la langue de discussion (lexique fait à la main, sans normalisation latine)."""
+        mots = langues.LEXIQUE.get(discussion, {}).get("stop")
+        return bool(mots and re.search(rf"(^|\W)({mots})(\W|$)", sans_accents(entendu)))
+
+    def dire(texte_fr):
+        """Traduit la réponse dans la langue de discussion, puis la prononce."""
+        return parler(traducteur.traduire(texte_fr, "fr", discussion) if discussion != "fr" else texte_fr)
+
+    def changer_discussion(code):
+        """Change la langue dans laquelle on parle à Orion (et sa voix)."""
+        nonlocal discussion
+        if code not in langues.CATALOGUE:  # voix disponible, mais pas de modèle pour discuter
+            return changer_langue(code) or f"Je ne sais pas encore discuter en {code}."
+        if not langues.installee(code):
+            return (f"Le {langues.nom(code)} n'est pas encore installé pour discuter. Ouvre le panneau, "
+                    "onglet Langues : je t'indiquerai l'espace nécessaire avant de l'installer.")
+        discussion = code
+        oreille.charger(langues.chemin_modele_vosk(code))
+        cfg["langue_discussion"] = code
+        sauver(cfg)
+        message = changer_langue(code) if code != cfg["langue"] else ""
+        return f"D'accord, on parle maintenant en {langues.nom(code)}. {message}".strip()
 
     def ecouter(eveille):
         """Attend une phrase complète, en affichant les mots au fur et à mesure."""
@@ -129,7 +163,9 @@ def boucle_vocale(cfg, holo):
         cfg.update(langue=code, voix_id=voix[0][0], langue_confirmee=True, genre=voix[0][3] or cfg["genre"])
         sauver(cfg)
         bouche.voix = voix[0][0]
-        return f"D'accord, je parle maintenant en {nom}. Attention, je ne comprends toujours que le français."
+        if code != discussion:
+            return f"D'accord, ma voix est maintenant en {nom}."
+        return ""
 
     if not cfg["langue_confirmee"]:
         confirmer_langue()
@@ -143,7 +179,10 @@ def boucle_vocale(cfg, holo):
         holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else cfg["nom"])
         texte, empreinte = ecouter(eveille)
         t = normaliser(texte)
-        if not eveille and not any(m in t[:30] for m in cfg["mots_eveil"]):
+        if not eveille and not any(m in t[:30] or m in texte.lower()[:30] for m in cfg["mots_eveil"]):
+            continue
+        if stop_lexique(texte) and len(texte.split()) <= 3:
+            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
         reste = re.sub(STOP, "", t)
         for m in cfg["mots_eveil"]:
@@ -153,15 +192,18 @@ def boucle_vocale(cfg, holo):
             continue
         locuteur = profils.identifier(empreinte)
         holo.changer("reflexion", f"{locuteur} : {texte}")
-        m = re.search(r"\bparle (?:en )?(\w+)", t)
-        if m and _langue_demandee(m.group(1)):
-            reponse, tache = changer_langue(_langue_demandee(m.group(1))), None
+        phrase_fr = cerveau.en_francais(texte, discussion, traducteur)
+        t_fr = normaliser(phrase_fr)
+        m = re.search(r"\b(?:parle|parlons|discutons|discute|on parle)(?: avec moi)? en (\w+)", t_fr)
+        code = _langue_demandee(m.group(1)) if m else None
+        if code:
+            reponse, tache = changer_discussion(code), None
         else:
-            reponse, tache = cerveau.repondre(texte, locuteur)
+            reponse, tache = cerveau.repondre(phrase_fr, locuteur)
         if tache:
             holo.changer("execution", "J'exécute…")
             reponse = tache()
-        parler(reponse)
+        dire(reponse)
         eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
 
 
@@ -179,9 +221,6 @@ def main():
         return mode_texte(cfg)
     if commande == "savoir":
         return print(f"{knowledge.construire()} fiches indexées.")
-    if commande == "worker-voix":
-        from .bouche import worker
-        return worker()
     if commande == "panneau":
         from .panneau import Panneau
         return Panneau().lancer()
@@ -205,4 +244,6 @@ def main():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

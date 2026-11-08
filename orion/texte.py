@@ -5,6 +5,12 @@ import re
 import unicodedata
 
 
+def sans_accents(t: str) -> str:
+    """Minuscules sans accents, en gardant tous les alphabets (cyrillique, arabe, chinois…)."""
+    t = unicodedata.normalize("NFD", t.lower())
+    return "".join(c for c in t if unicodedata.category(c) != "Mn").strip()
+
+
 def normaliser(t: str) -> str:
     t = unicodedata.normalize("NFD", t.lower())
     t = "".join(c for c in t if unicodedata.category(c) != "Mn")
