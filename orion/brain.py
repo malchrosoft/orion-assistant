@@ -502,6 +502,12 @@ class Cerveau(Publications, Documents):
             self.duree_demandee = True
             return "Pour combien de temps ?", None
 
+        # --- Compétence « commande » : une question sur l'ordinateur résolue par une commande de consultation ---
+        if re.search(r"\b(en bash|en shell|en zsh|une commande|ligne de commande|dans le terminal|par le terminal)\b|"
+                     r"\b(adresse ip|niveau de (?:la )?batterie|batterie|processus|programmes?\b.*\b(?:tournent|consomment|ouverts?)|"
+                     r"combien de fichiers|depuis quand .*allume|mac est allume|uptime)\b", t):
+            return self._commande(phrase)
+
         # --- Ordinateur (lecture seule) : disques, espace, système, versions, fichiers ---
         reponse = self._ordinateur(t)
         if reponse:
@@ -550,7 +556,7 @@ class Cerveau(Publications, Documents):
         if re.search(r"\b(qui suis je|qui je suis|tu me reconnais|tu (?:me )?reconnais (?:ma voix|qui)|^tu reconnais$|"
                      r"qui parle|tu sais qui (je suis|c est))\b", t):
             return (f"Tu es{prenom}." if prenom else "Je ne reconnais pas ta voix. "
-                    "Tu peux l'enregistrer avec la commande enroler."), None
+                    "Dis « mémorise ma voix, je suis… », ou « complète ma voix » si je te connais déjà."), None
         if re.search(r"\b(je vais (me coucher|dormir)|bonne nuit|a demain|je vais au lit)\b", t):
             return random.choice([f"Bonne nuit{prenom}, dors bien !", f"Bonne nuit{prenom}. À demain !"]), None
         if re.search(r"\b(qui es tu|comment tu t appelles|ton nom|presente toi|presentez vous|tu es qui)\b", t):
@@ -561,26 +567,30 @@ class Cerveau(Publications, Documents):
             return f"À bientôt{prenom}.", None
 
         # --- Musique --------------------------------------------------------
-        if re.search(r"\b(musique|morceau|chanson|spotify|aimp|playlist|joue|mets)\b", t):
-            lecteur = "spotify" if "spotify" in t else "aimp" if "aimp" in t else None
+        if re.search(r"\b(musique|morceau|chanson|spotify|aimp|vlc|playlist|joue|mets)\b", t):
+            lecteur = next((c for c, motif in (("spotify", r"\bspotify\b"), ("aimp", r"\baimp\b"), ("vlc", r"\bvlc\b"),
+                                                ("musique", r"\b(apple music|itunes|l app musique|application musique)\b"))
+                            if re.search(motif, t)), None)
             if re.search(r"\b(suivant|suivante|passe|next)\b", t):
                 cmd = "suivant"
             elif re.search(r"\b(precedent|precedente|reviens)\b", t):
                 cmd = "precedent"
-            elif re.search(r"\b(pause)\b", t):
+            elif re.search(r"\b(pause)\b|^(?:pas|pose|po) la musique$", t):  # « pause » souvent mal transcrit
                 cmd = "pause"
             elif re.search(r"\b(arrete|stop|coupe)\b", t):
                 cmd = "stop"
             else:
                 cmd = "jouer"
-            m = re.search(r"\b(?:joue|mets|lance|ecouter)\s+(?!la musique|de la musique|spotify|aimp)(.+?)"
-                          r"(?:\s+sur\s+spotify)?$", t)
-            recherche = m.group(1) if m and cmd == "jouer" and lecteur == "spotify" else None
+            m = re.search(r"\b(?:joue|mets|lance|ecouter)\s+(?!la musique|de la musique|spotify|aimp|vlc|musique)"
+                          r"(?:moi |du |de la |des |le |la |les )?(.+?)(?:\s+sur\s+(?:spotify|vlc|musique|apple music))?$", t)
+            recherche = m.group(1) if m and cmd == "jouer" else None
             return None, lambda: a.musique(cmd, lecteur, recherche)
         if re.search(r"\b(suivant|morceau d apres)\b", t):
             return None, lambda: a.musique("suivant")
-        if re.search(r"\b(pause|reprends)\b", t):
+        if re.search(r"\bpause\b", t):
             return None, lambda: a.musique("pause")
+        if re.search(r"\b(reprends|relance) (?:la )?(?:musique|lecture)\b|^reprends$", t):
+            return None, lambda: a.musique("jouer")
 
         # --- Volume / applis --------------------------------------------------
         if re.search(r"\bvolume\b", t) or re.search(r"\b(monte|baisse|augmente|diminue|coupe|remets)\w* (le |du )?son\b", t):
@@ -842,6 +852,32 @@ class Cerveau(Publications, Documents):
         question, chute = blagues.blague(self.cfg.get("blagues_internet", False))  # réserve relue par défaut
         self.derniere_origine = "blague"
         return f"{question} … {chute}" if chute else question
+
+    def _commande(self, question):
+        """Le modèle local écrit une commande de consultation ; Orion la vérifie, la montre, attend l'accord,
+        la lance en lecture seule (bac à sable), puis résume le résultat."""
+        from . import commandes
+        if not commandes.systeme():
+            return "Je ne sais pas encore écrire de commande pour ce système.", None
+        if not self.conversation.local_disponible():
+            return "Il me faut mon modèle de conversation pour écrire une commande : installe-le depuis le panneau.", None
+        self.signaler("J'écris la commande…")
+        commande = commandes.proposer(question, self.conversation)
+        self.signaler("")
+        if not commande:
+            return "Je ne trouve pas de commande qui réponde sans rien modifier.", None
+        sure, raison = commandes.verifier(commande)
+        if not sure:
+            return f"J'ai pensé à « {commande} », mais je ne la lance pas : {raison}.", None
+
+        def lancer():
+            with self._redaction("la commande", "BASH"):
+                sortie = commandes.executer(commande)
+            print(f"[commande] {commande}\n{sortie}", flush=True)
+            self.derniere_origine = "commande"
+            return commandes.resumer(question, sortie, self.conversation)
+        self.en_attente = lancer
+        return f"Je vais lancer la commande « {commande} », en lecture seule. Je la lance ?", None
 
     def _capacites(self, t, generique=True):
         """Fiche de capacité la plus proche de la question (2 ou 3 phrases), ou un résumé très court."""
