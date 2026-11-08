@@ -45,7 +45,8 @@ options = [
 if sys.platform == "win32":  # icône de l'application (logo d'Orion)
     options += ["--icon", str(ICI / "orion" / "data" / "logos" / "orion.ico")]
 if sys.platform == "darwin":
-    options += ["--osx-bundle-identifier", "fr.malchrosoft.orion"]
+    options += ["--osx-bundle-identifier", "fr.malchrosoft.orion",
+                "--icon", str(ICI / "orion" / "data" / "logos" / "orion.icns")]
 for paquet in EMBARQUES:
     options += ["--copy-metadata", paquet]
 

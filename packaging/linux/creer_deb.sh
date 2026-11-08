@@ -8,10 +8,13 @@ VERSION=${1:-0.1.0}
 RACINE=$(mktemp -d)
 
 mkdir -p "$RACINE/DEBIAN" "$RACINE/opt/orion" "$RACINE/usr/bin" "$RACINE/usr/share/applications" \
-         "$RACINE/usr/share/doc/orion"
+         "$RACINE/usr/share/doc/orion" "$RACINE/usr/share/icons/hicolor/256x256/apps" \
+         "$RACINE/usr/share/icons/hicolor/512x512/apps"
 cp -R dist/Orion/. "$RACINE/opt/orion/"
 ln -s /opt/orion/Orion "$RACINE/usr/bin/orion"
 cp LICENSE THIRD_PARTY_NOTICES.md "$RACINE/usr/share/doc/orion/"
+cp orion/data/logos/orion.png "$RACINE/usr/share/icons/hicolor/256x256/apps/orion.png"
+cp orion/data/logos/orion-512.png "$RACINE/usr/share/icons/hicolor/512x512/apps/orion.png"
 
 cat > "$RACINE/usr/share/applications/orion.desktop" <<EOF
 [Desktop Entry]
@@ -19,6 +22,7 @@ Type=Application
 Name=Orion
 Comment=Assistant vocal familial, léger et hors ligne
 Exec=/opt/orion/Orion
+Icon=orion
 Terminal=false
 Categories=Utility;Accessibility;
 EOF

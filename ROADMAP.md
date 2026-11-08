@@ -88,11 +88,12 @@ sans raison, source citée.
   - baisser automatiquement le volume de la musique pendant qu'Orion parle, puis le rétablir.
 
 ### Distribution
-- **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée ;
-  icône macOS (.icns) et Linux (.desktop) à partir du nouveau logo.
+- **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée.
 
 ## Fait récemment
 
+- Icônes de l'application : `.icns` pour macOS (16 à 1024 px), icône du paquet Linux (menu des
+  applications), `.ico` pour Windows.
 - Fenêtre maîtresse : un seul panneau à la fois (un second lancement le ramène au premier plan),
   fenêtres secondaires uniques et fermées avec le panneau, quitter l'hologramme ferme tout, position
   des fenêtres retenue (et ramenée dans l'écran).
