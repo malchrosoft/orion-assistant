@@ -92,6 +92,12 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Mémoire sur soi plus fine : « oublie ça / cette histoire / ce que tu viens de dire » n'efface que
+  l'échange juste avant ; « cherche dans ta mémoire sur moi à propos de… » retrouve les souvenirs et
+  échanges contenant ces mots, les cite, puis les efface sur confirmation.
+- Voix proches mieux départagées : hauteur moyenne de la voix mesurée et apprise en plus de l'empreinte ;
+  quand plusieurs voix se ressemblent trop, Orion demande qui parle ; « tu te trompes, c'est … » le fait
+  basculer sur la bonne personne et apprendre ; comparaison des voix dans le panneau, onglet Famille.
 - Noms de fichiers et formats lus comme on les dit, dans chaque langue : « rapport.pdf » → « rapport point
   P D F », « .docx » → « doc X », « epub » en un mot ; jamais la signification du sigle.
 - Sources citées dans les documents générés à partir des publications téléchargées : publication et

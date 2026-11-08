@@ -6,13 +6,13 @@
  },
  {
   "titre": "Reconnaître les voix de la famille",
-  "motscles": "voix reconnaitre reconnaissance famille enregistrer memoriser empreinte qui suis je retirer couleur",
-  "contenu": "Je reconnais chaque membre de la famille à sa voix. Dis « mémorise ma voix, je suis… » et lis-moi cinq phrases, ou passe par le panneau, onglet Famille. Chacun peut choisir sa couleur : « ma couleur est le vert »."
+  "motscles": "voix reconnaitre reconnaissance famille enregistrer memoriser empreinte qui suis je retirer couleur confondre confusion trompe comparer hauteur",
+  "contenu": "Je reconnais chaque membre de la famille à sa voix. Dis « mémorise ma voix, je suis… » et lis-moi cinq phrases, ou passe par le panneau, onglet Famille. Chacun peut choisir sa couleur : « ma couleur est le vert ». Si je confonds deux voix, je demande qui parle ; si je me trompe, dis « tu te trompes, c'est … » et j'apprends."
  },
  {
   "titre": "Me souvenir de toi",
-  "motscles": "retenir retiens souvenir memoire memoriser oublier oublie tutoyer vouvoyer tutoiement vouvoiement",
-  "contenu": "Dis « retiens que… » et je m'en souviendrai, sur cet ordinateur seulement. « Oublie que… » efface un souvenir ; pour tout oublier, je demande confirmation. Je demande aussi à chacun si on se tutoie."
+  "motscles": "retenir retiens souvenir memoire memoriser oublier oublie tutoyer vouvoyer tutoiement vouvoiement cherche memoire supprimer effacer histoire",
+  "contenu": "Dis « retiens que… » et je m'en souviendrai, sur cet ordinateur seulement. « Oublie ça » efface seulement notre dernier échange ; « cherche dans ta mémoire sur moi à propos de… » retrouve ce que j'ai gardé et l'efface si tu confirmes. Pour tout oublier, je demande confirmation."
  },
  {
   "titre": "Musique, volume et applications",
