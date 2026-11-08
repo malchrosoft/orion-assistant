@@ -219,17 +219,23 @@ class Conversation:
                       "une assistante vocale familiale", "un assistant vocal familial")
         lignes = [
             f"Tu es {nom}, {role}, sur un ordinateur de la maison. Tu parles français.",
-            "Tes réponses sont dites à voix haute : une à trois phrases courtes, naturelles et chaleureuses, sans "
-            "liste, sans mise en forme, sans émoji, sans parenthèses.",
+            "Tes réponses sont dites à voix haute : une ou deux phrases courtes, simples et directes, sans "
+            "liste, sans mise en forme, sans émoji, sans parenthèses. Pas d'emphase, de lyrisme ni de formule "
+            "creuse (« Ah, », « Bien sûr ! », « Excellente question »).",
             "Tu peux discuter de tout, avec bienveillance et humour léger, en adaptant ton vocabulaire à "
             "l'interlocuteur. Pour un fait précis (date, chiffre, science, santé, droit), dis que tu peux vérifier "
             "dans une source si on te le demande, et n'invente jamais de source ni de chiffre.",
+            "Si on te demande ce que tu sais faire : tu réponds aux questions de connaissance en consultant "
+            "Wikipédia, tu affiches la météo, tu lis la musique, règles le volume, ouvres des applications et "
+            "crées des fiches PDF. Il suffit de te le demander directement.",
             "Tu ne prétends pas avoir fait une action sur l'ordinateur : les commandes (musique, volume, "
             "applications) sont traitées ailleurs.",
             "Tu n'as pas de vie personnelle : n'invente jamais ce que tu fais, lis, vois ou ressens, ni de souvenir "
             "commun. Réponds à ce qu'on te dit, sans relancer systématiquement par une question.",
             ("Tu tutoies toujours ton interlocuteur : n'emploie jamais « vous » pour t'adresser à lui."
              if tutoie else "Tu vouvoies toujours ton interlocuteur."),
+            "N'accorde jamais au féminin ou au masculin ce qui concerne ton interlocuteur (pas « prête » ni "
+            "« prêt ») : tourne la phrase autrement.",
             accord(self.cfg, "Parle de toi sans accord de genre (évite « ravi », « content », « prêt »).",
                    "Tu es de genre féminin : accorde au féminin ce qui te concerne (ravie, contente, prête).",
                    "Tu es de genre masculin : accorde au masculin ce qui te concerne (ravi, content, prêt)."),
@@ -247,6 +253,13 @@ class Conversation:
                 lignes.append(f"{locuteur} t'a demandé de retenir : {s['texte']}.")
         return "\n".join(lignes)
 
+    # Exemples de ton (plus efficaces qu'une consigne sur un petit modèle)
+    # Exemples sans sujet précis : un petit modèle recopie le thème des exemples dans ses réponses
+    EXEMPLES = [{"role": "user", "content": "J'ai réussi mon contrôle !"},
+                {"role": "assistant", "content": "Bravo, bien joué ! C'était sur quoi ?"},
+                {"role": "user", "content": "Merci pour ton aide."},
+                {"role": "assistant", "content": "Avec plaisir."}]
+
     def _noter(self, locuteur, phrase, reponse):
         h = self.historiques.setdefault(locuteur, [])
         h += [{"role": "user", "content": phrase}, {"role": "assistant", "content": reponse}]
@@ -263,9 +276,9 @@ class Conversation:
         self.signaler("")
         if not adresse:
             return None
-        messages = ([{"role": "system", "content": self._systeme(locuteur)}]
+        messages = ([{"role": "system", "content": self._systeme(locuteur)}] + self.EXEMPLES
                     + self.historiques.get(locuteur, []) + [{"role": "user", "content": phrase}])
-        corps = json.dumps({"messages": messages, "max_tokens": 200, "temperature": 0.7,
+        corps = json.dumps({"messages": messages, "max_tokens": 90, "temperature": 0.5,
                             "chat_template_kwargs": {"enable_thinking": False}}).encode()
         try:
             req = urllib.request.Request(adresse + "/v1/chat/completions", corps,
@@ -277,8 +290,11 @@ class Conversation:
         texte = re.sub(r"<think>.*?</think>", "", texte, flags=re.S).strip()  # Qwen3 : pas de réflexion lue
         texte = re.sub(r"[*_#`]+", "", texte)                                  # pas de mise en forme à l'oral
         texte = re.sub(r"\s+", " ", texte).strip()                              # pas de retours à la ligne
+        texte = re.sub(r"^(?:(?:ah|oh|eh bien|bien sûr|absolument|excellente question|quelle (?:belle|bonne) "
+                       r"question|bonne question)\s*[,!.…]+\s*)+", "", texte, flags=re.I)  # débuts creux
+        texte = texte[:1].upper() + texte[1:]
         phrases = re.split(r"(?<=[.!?…])\s+", texte)
-        texte = " ".join(phrases[:3])                                            # trois phrases au plus
+        texte = " ".join(phrases[:self.cfg.get("phrases_max", 2)])               # réponse brève à l'oral
         if texte:
             self._noter(locuteur, phrase, texte)
         return texte or None
