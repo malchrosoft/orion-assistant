@@ -183,3 +183,13 @@ def vouvoyer(texte):
     for motif, rempl in remplacements:
         texte = re.sub(motif, rempl, texte)
     return texte
+
+
+# Couleur de chaque personne (halo de l'hologramme quand Orion la reconnaît)
+COULEURS = {"rouge": "#ff4d4d", "orange": "#ff9a3c", "jaune": "#ffe14d", "vert": "#4dff88", "turquoise": "#3ce0d0",
+            "bleu": "#4d8bff", "violet": "#a86bff", "rose": "#ff6bc1", "blanc": "#f2f2f2", "or": "#ffcc33",
+            "dore": "#ffcc33", "argent": "#c8d0d8", "marron": "#b07040", "corail": "#ff7f6b", "lavande": "#b9a6ff"}
+
+
+def couleur(nom):
+    return fiche(nom).get("couleur")
