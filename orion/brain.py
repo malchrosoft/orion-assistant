@@ -86,6 +86,8 @@ class Cerveau:
         self.oubli_a_confirmer = None     # (nom, mots ou None pour « tout ») en attente d'un « oui »
         self.demande_enrolement = None    # prénom dont la boucle vocale doit enregistrer la voix
         self.conversation = Conversation(cfg)
+        self.signaler = lambda message: None  # avancement des tâches longues (branché par la boucle vocale)
+        self.a_recharger = False              # la boucle vocale recharge la configuration (voix, modèle…)
         self.retrait_voix = None          # prénom dont on attend la confirmation de retrait de la voix
         self.tutoiement_demande = set()   # une seule fois par session et par personne
         self.signaler_inconnu = False     # mode vocal : prévenir quand une voix n'est pas reconnue
@@ -132,6 +134,10 @@ class Cerveau:
             personnes.modifier(nom, tutoiement=tutoie)
             return ("Super, on se tutoie !" if tutoie else "Entendu, je vous vouvoierai."), None
         self.question_tutoiement = None
+
+        if re.search(r"\b(recharge toi|recharge ta configuration|recharge tes reglages|relis tes reglages)\b", t):
+            self.a_recharger = True
+            return "D'accord, je recharge mes réglages.", None
 
         # --- Installer ce qui manque (voix naturelle, conversation) -------------------
         if re.search(r"\bce qu(i| il) te manque\b", t) or (re.search(r"\b(installe|telecharge|ajoute)s?\b", t) and re.search(
@@ -219,7 +225,7 @@ class Cerveau:
                                  f"soit {r * 100:.0f} %.", locuteur), None
 
         prefixe = ""
-        if not connu and self.signaler_inconnu and not self.inconnu_signale:
+        if not connu and self.signaler_inconnu and not self.inconnu_signale and not re.search(OUI + "|" + NON, t):
             self.inconnu_signale = True
             prefixe = "Je n'ai pas reconnu ta voix, je te réponds de façon générale. "
         if connu:
@@ -294,11 +300,13 @@ class Cerveau:
                     "bouton « Installer ce qui manque ».")
 
         def installer():
+            self.signaler("Je commence l'installation.")
             try:
-                composants.installer(self.cfg, liste)
+                composants.installer(self.cfg, liste, self.signaler)
             except Exception as e:
                 return f"L'installation n'a pas abouti : {e}"
-            return "C'est installé ! Relance-moi pour profiter de ma nouvelle voix et de la conversation."
+            self.a_recharger = True
+            return "C'est terminé ! Tout est installé, et je l'utilise dès maintenant."
         self.en_attente = installer
         return f"Je peux installer {quoi} : cela fait {espace.mo(total)} à télécharger. Je m'en occupe ?"
 
@@ -371,7 +379,7 @@ class Cerveau:
             return f"Oui{prenom} ?", None
         if re.search(r"^(bonjour|salut|coucou|hello|bonsoir)\b", t):
             return random.choice([f"Bonjour{prenom} !", f"Salut{prenom}, que puis-je faire ?"]), None
-        if re.search(r"\b(qui suis je|tu me reconnais|qui parle)\b", t):
+        if re.search(r"\b(qui suis je|qui je suis|tu me reconnais|qui parle|tu sais qui (je suis|c est))\b", t):
             return (f"Tu es{prenom}." if prenom else "Je ne reconnais pas ta voix. "
                     "Tu peux l'enregistrer avec la commande enroler."), None
         if re.search(r"\b(je vais (me coucher|dormir)|bonne nuit|a demain|je vais au lit)\b", t):

@@ -15,15 +15,18 @@ def manquants(dossier: Path):
     return [n for n in MODELES if not (dossier / n).is_dir()]
 
 
-def telecharger(dossier: Path, nom: str):
+def telecharger(dossier: Path, nom: str, signaler=None):
     dossier.mkdir(parents=True, exist_ok=True)
     archive = dossier / f"{nom}.zip"
+    libelle = MODELES.get(nom, nom).split(" (")[0].capitalize()
 
     def progression(blocs, taille_bloc, total):
         if total > 0:
             pct = min(100, blocs * taille_bloc * 100 // total)
             sys.stdout.write(f"\r  {nom} : {pct:3d} %")
             sys.stdout.flush()
+            if signaler:
+                signaler(f"Téléchargement : {libelle} : {pct} %")
 
     urllib.request.urlretrieve(URL.format(nom), archive, progression)
     print()
@@ -36,7 +39,7 @@ def telecharger(dossier: Path, nom: str):
     archive.unlink()
 
 
-def installer(dossier: Path):
+def installer(dossier: Path, signaler=None):
     for nom in manquants(dossier):
         print(f"Téléchargement : {MODELES[nom]}")
-        telecharger(dossier, nom)
+        telecharger(dossier, nom, signaler)

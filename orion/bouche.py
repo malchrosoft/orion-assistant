@@ -46,6 +46,35 @@ def voix_pour(langue):
     return sorted(voix, key=lambda v: (not any(p in f"{v[0]} {v[1]}".lower() for p in pays), qualite(v)))
 
 
+def _vers_int16(son, largeur):
+    """Échantillons WAV → array('h') (16 bits signés), quel que soit le format écrit par le moteur."""
+    import array
+    import struct
+    if largeur == 2:
+        return array.array("h", son)
+    valeurs = struct.unpack(f"<{len(son) // 4}f", son)  # 32 bits flottants
+    return array.array("h", (max(-32768, min(32767, int(v * 32767))) for v in valeurs))
+
+
+def _reechantillonner(echantillons, source, cible):
+    """Rééchantillonnage linéaire (sans numpy) : quelques centièmes de seconde par phrase."""
+    import array
+    n = len(echantillons)
+    if n < 2:
+        return echantillons
+    rapport = source / cible
+    taille = int(n / rapport)
+    sortie = array.array("h", bytes(2 * taille))
+    for i in range(taille):
+        x = i * rapport
+        j = int(x)
+        k = x - j
+        a = echantillons[j]
+        b = echantillons[j + 1] if j + 1 < n else a
+        sortie[i] = int(a + (b - a) * k)
+    return sortie
+
+
 def _dire_piper(ordre):
     """Voix naturelle : sherpa-onnx écrit un WAV temporaire, joué aussitôt puis supprimé."""
     import os
@@ -66,8 +95,13 @@ def _dire_piper(ordre):
         with wave.open(chemin) as w:
             frequence, son = w.getframerate(), w.readframes(w.getnframes())
             largeur = w.getsampwidth()
-        with sd.RawOutputStream(samplerate=frequence, channels=1, dtype="int16" if largeur == 2 else "float32") as f:
-            f.write(son)
+        echantillons = _vers_int16(son, largeur)
+        # macOS (CoreAudio) refuse souvent une fréquence autre que celle de la carte son : on convertit
+        native = int(sd.query_devices(kind="output")["default_samplerate"])
+        if native != frequence:
+            echantillons = _reechantillonner(echantillons, frequence, native)
+        with sd.RawOutputStream(samplerate=native, channels=1, dtype="int16") as f:
+            f.write(echantillons.tobytes())
     finally:
         os.unlink(chemin)
 
@@ -100,6 +134,12 @@ class Bouche:
     def __init__(self, cfg):
         self.cfg = cfg
         self.verrou = threading.Lock()
+        self.recharger(cfg, annoncer=True)
+        self._demarrer()
+
+    def recharger(self, cfg, annoncer=False):
+        """Applique la voix configurée (après une installation ou un réglage du panneau), sans redémarrer."""
+        self.cfg = cfg
         self.voix = cfg.get("voix_id") or next(iter(v[0] for v in voix_pour(cfg["langue"])), None)
         self.piper = None
         cle = cfg.get("voix_piper")
@@ -107,11 +147,10 @@ class Bouche:
             from . import piper
             if cle in piper.VOIX and piper.installee(cle):
                 self.piper = cle
-            else:
+            elif annoncer:
                 import sys
                 print(f"[voix naturelle « {cle} » non installée : voix du système utilisée. Dites « installe ce "
                       "qui te manque » ou passez par le panneau.]", file=sys.stderr, flush=True)
-        self._demarrer()
 
     def _demarrer(self):
         self.entree, self.sortie = multiprocessing.Queue(), multiprocessing.Queue()

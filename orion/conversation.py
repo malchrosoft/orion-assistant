@@ -205,6 +205,7 @@ class Conversation:
     def __init__(self, cfg):
         self.cfg = cfg
         self.historiques = {}
+        self.signaler = lambda message: None
 
     def local_disponible(self):
         return installe(choix(self.cfg))
@@ -256,7 +257,10 @@ class Conversation:
         global MOTEUR
         cle = choix(self.cfg)
         MOTEUR = MOTEUR or Moteur()
+        if not (MOTEUR.proc and MOTEUR.proc.poll() is None and MOTEUR.cle == cle):
+            self.signaler("Je réveille mon modèle de conversation…")
         adresse = MOTEUR.url(cle)
+        self.signaler("")
         if not adresse:
             return None
         messages = ([{"role": "system", "content": self._systeme(locuteur)}]

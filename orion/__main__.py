@@ -108,6 +108,40 @@ def enroler(cfg, nom):
 STOP = r"\b(stop|tais toi|taisez vous|chut|silence|arrete|ca suffit|attends|stoppe)\b"
 
 
+CHAHUTE = [
+    "Oh là, où est-ce qu'on m'emmène ?",
+    "Doucement, j'ai le mal de mer !",
+    "Wouah, ça tangue ! Préviens la prochaine fois.",
+    "Hop là ! Bon, d'accord, je m'installe ici.",
+    "Attention, je vais finir par avoir le tournis.",
+    "Tu déménages souvent les gens comme ça ?",
+    "Pas trop vite, mes points s'éparpillent !",
+]
+
+TROP_DE_CLICS = [
+    "Hé, doucement ! Je ne suis pas un bouton d'ascenseur : un seul clic suffit, je t'écoute.",
+    "Du calme, du calme ! À force de me tapoter, je vais finir par compter les points.",
+    "Je suis à l'écoute, promis. Pas besoin de me secouer comme une vieille télécommande !",
+    "Respire un grand coup… Voilà. Maintenant, dis-moi ce que tu veux, je suis à ton écoute.",
+    "Si tu cliques encore, je demande une augmentation ! Bon, je t'écoute.",
+]
+
+
+def _date_config():
+    from .config import UTILISATEUR
+    fichier = UTILISATEUR / "config.json"
+    return fichier.stat().st_mtime if fichier.exists() else 0.0
+
+
+def _lire_avancement(message):
+    """« Voix Siwis : 40 % » → (« Voix Siwis… », 0.4) ; sans pourcentage, la fraction est inconnue (None)."""
+    import re
+    m = re.search(r"(\d+)\s*%", message)
+    if not m:
+        return message, None
+    return re.sub(r"\s*:?\s*\d+\s*%.*$", "", message) + "…", int(m.group(1)) / 100
+
+
 def _langue_demandee(t):
     """« anglais » → "en" ; None si aucune langue reconnue."""
     from .bouche import LANGUES
@@ -123,8 +157,9 @@ def boucle_vocale(cfg, holo):
     from .persona import salutation
     from .voix import Oreille, Profils
     if modeles.manquants(UTILISATEUR / "models"):
-        holo.changer("execution", "Premier lancement : téléchargement des modèles…")
-        modeles.installer(UTILISATEUR / "models")
+        holo.changer("execution", "Premier lancement")
+        modeles.installer(UTILISATEUR / "models", lambda m: holo.progression(*_lire_avancement(m)))
+        holo.progression("")
     from . import langues
     holo.changer("reflexion", "Chargement…")
     discussion = cfg["langue_discussion"] if langues.installee(cfg["langue_discussion"]) else "fr"
@@ -135,6 +170,37 @@ def boucle_vocale(cfg, holo):
     profils, cerveau = Profils(cfg["seuil_locuteur"]), Cerveau(cfg, Actions(cfg))
     holo.sur_silence = bouche.interrompre  # clic droit → « Se taire »
     holo.source_niveau = lambda: oreille.niveau  # l'anneau ondule avec le son du micro
+    clics = {"en_attente": False, "recents": [], "deplace": False, "derniere_remarque": 0.0}
+    holo.sur_clic = lambda: clics.update(en_attente=True)  # un clic sur l'hologramme vaut « dis Orion »
+    holo.sur_deplacement = lambda: clics.update(deplace=True)
+    annonces = {"etape": None, "palier": -1, "quand": 0.0}
+
+    def signaler_tache(message):
+        """Avancement d'une tâche longue : texte et barre sur l'hologramme ; à voix haute au début de chaque
+        étape puis à chaque quart, au plus toutes les 15 secondes, pour ne pas parler sans arrêt."""
+        if not message:
+            holo.progression("")
+            return
+        texte, fraction = _lire_avancement(message)
+        holo.progression(texte, fraction)
+        etape = re.sub(r"\s*:?\s*\d+\s*%.*$", "", message)
+        palier = int(fraction * 4) if fraction is not None else -1
+        maintenant = time.time()
+        if etape != annonces["etape"] or (palier > annonces["palier"] and maintenant - annonces["quand"] > 15):
+            annonces.update(etape=etape, palier=palier, quand=maintenant)
+            bouche.dire(etape if fraction is None else f"{etape} : {int(fraction * 100)} pour cent.")  # sans écoute de l'interruption : phrase courte, la tâche continue après
+    cerveau.signaler = signaler_tache
+    config_vue = {"date": _date_config()}
+
+    def recharger():
+        """Relit config.json et applique voix, présentation, modèle… sans redémarrer Orion."""
+        nouveau = charger()
+        nouveau.pop("chemin_vosk", None)
+        cfg.update({k: v for k, v in nouveau.items() if k != "chemin_vosk"})
+        bouche.recharger(cfg)
+        config_vue["date"] = _date_config()
+        print("[réglages rechargés]", flush=True)
+    cerveau.conversation.signaler = signaler_tache
     cerveau.signaler_inconnu = bool(profils.data)  # « je n'ai pas reconnu ta voix » seulement si la famille est enregistrée
     eveil_jusqua = 0.0
 
@@ -196,6 +262,16 @@ def boucle_vocale(cfg, holo):
     def ecouter(eveille):
         """Attend une phrase complète, en affichant les mots au fur et à mesure."""
         while True:
+            if clics["en_attente"]:
+                return None, None
+            if clics["deplace"]:
+                clics["deplace"] = False
+                # remarque de temps en temps seulement (au plus toutes les 20 s), pour que ça reste drôle
+                if time.time() - clics["derniere_remarque"] > 20 and random.random() < 0.6:
+                    clics["derniere_remarque"] = time.time()
+                    etat_avant = "ecoute" if eveille else "veille"
+                    parler(random.choice(CHAHUTE))
+                    holo.changer(etat_avant, "Je t'écoute…" if eveille else f"« dis {cfg['nom']} »")
             texte, final, empreinte = oreille.lire(0.5)
             if texte and not final and (eveille or trouver_eveil(texte, cfg["mots_eveil"],
                                                                    cfg["formules_eveil"])[0]):
@@ -254,9 +330,24 @@ def boucle_vocale(cfg, holo):
     dernier_locuteur = None
     formule = f"dis {cfg['nom']}"
     while True:
+        if _date_config() != config_vue["date"]:  # réglages modifiés dans le panneau : appliqués tout de suite
+            recharger()
         eveille = time.time() < eveil_jusqua
         holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else f"« {formule} »")
         texte, empreinte = ecouter(eveille)
+        if texte is None:  # clic sur l'hologramme : comme « dis Orion »… sauf si l'on s'acharne
+            clics["en_attente"] = False
+            maintenant = time.time()
+            clics["recents"] = [c for c in clics["recents"] if maintenant - c < 15] + [maintenant]
+            if len(clics["recents"]) >= 5:
+                clics["recents"] = []
+                holo.changer("parole", "Du calme…")
+                parler(random.choice(TROP_DE_CLICS))
+            else:
+                holo.changer("ecoute", "Je t'écoute…")
+                parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
+            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
+            continue
         t = normaliser(texte)
         nomme, sans_nom = trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])
         print(f"[entendu{' (éveillé)' if eveille else ''}{' · formule reconnue' if nomme else ''} · confiance "
@@ -297,6 +388,10 @@ def boucle_vocale(cfg, holo):
         if tache:
             holo.changer("execution", "J'exécute…")
             reponse = tache()
+            holo.progression("")
+        if cerveau.a_recharger:  # après une installation ou « recharge-toi » : on applique avant de répondre
+            cerveau.a_recharger = False
+            recharger()
         print(f"[{cfg['nom']}] {reponse}", flush=True)
         dire(reponse)
         if cerveau.demande_enrolement:
@@ -313,7 +408,13 @@ def demo_holo(holo):
     holo.source_niveau = lambda: abs(math.sin(time.time() * 3.1) * math.sin(time.time() * 1.7))
     for etat in ["veille", "ecoute", "reflexion", "parole", "execution"] * 50:
         holo.changer(etat, etat)
-        time.sleep(3)
+        if etat == "execution":  # tâche simulée : texte en petit et barre de progression
+            for i in range(31):
+                holo.progression("Démonstration : téléchargement…", i / 30)
+                time.sleep(0.1)
+            holo.progression("")
+        else:
+            time.sleep(3)
 
 
 def main():

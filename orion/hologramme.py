@@ -152,7 +152,7 @@ class Hologramme:
                 self.root.overrideredirect(True)
             except tk.TclError:
                 pass
-        self.toile = c = tk.Canvas(self.root, width=s, height=s + 40, bg=FOND, highlightthickness=0)
+        self.toile = c = tk.Canvas(self.root, width=s, height=s + 70, bg=FOND, highlightthickness=0)
         c.pack()
         rnd = random.Random(11)
 
@@ -186,9 +186,18 @@ class Hologramme:
         self.points = [c.create_oval(0, 0, 0, 0, outline="", fill=FOND) for _ in self.tete]
         self.balayage = c.create_line(0, 0, 0, 0, fill=FOND, dash=(2, 6))
         self.texte = c.create_text(s / 2, s + 18, text="", fill="#ffffff", font=("Consolas", 11))
+        # Tâche en cours : texte en petit et barre de progression (masqués quand rien n'est en cours)
+        self.statut_texte, self.statut_fraction = "", None
+        self.statut = c.create_text(s / 2, s + 40, text="", fill="#ffffff", font=("Consolas", 9))
+        self.barre_fond = c.create_rectangle(s * 0.2, s + 54, s * 0.8, s + 58, outline="", fill=FOND, state="hidden")
+        self.barre = c.create_rectangle(s * 0.2, s + 54, s * 0.2, s + 58, outline="", fill=FOND, state="hidden")
 
         c.bind("<ButtonPress-1>", self._debut_glisser)
         c.bind("<B1-Motion>", self._glisser)
+        c.bind("<ButtonRelease-1>", self._relache)
+        self.sur_clic = lambda: None  # un clic simple : Orion écoute (branché par la boucle vocale)
+        self.sur_deplacement = lambda: None  # fenêtre déplacée : Orion peut faire une remarque
+        self._clic_prevu = None
         self.root.bind("<Escape>", lambda e: self.root.destroy())
         # Utilisateur lambda : tout est à la souris (clic droit = menu, double-clic = panneau)
         self.sur_silence = lambda: None
@@ -199,7 +208,7 @@ class Hologramme:
         menu.add_command(label=f"Quitter {cfg['nom']}", command=self.root.destroy)
         c.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
         c.bind("<Button-2>", lambda e: menu.tk_popup(e.x_root, e.y_root))  # macOS
-        c.bind("<Double-Button-1>", lambda e: self.ouvrir_panneau())
+        c.bind("<Double-Button-1>", self._double_clic)
         self._animer()
 
     def _colorer(self, etat, px_par_unite_cible):
@@ -229,6 +238,11 @@ class Hologramme:
                     img.transparency_set(i, j, True)
         return img
 
+    def progression(self, texte, fraction=None):
+        """Tâche en cours (appelable depuis n'importe quel thread) : texte en petit, barre si la fraction (0 à 1)
+        est connue. progression("") efface tout."""
+        self.statut_texte, self.statut_fraction = texte, fraction
+
     def changer(self, etat, legende=None):
         """Appelable depuis n'importe quel thread."""
         if etat != self.etat:
@@ -242,12 +256,31 @@ class Hologramme:
         cmd = [sys.executable, "panneau"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "orion", "panneau"]
         subprocess.Popen(cmd)
 
-    # Déplacement de la fenêtre sans bordure
+    # Souris : glisser déplace la fenêtre, un clic fait écouter Orion, un double-clic ouvre le panneau
     def _debut_glisser(self, e):
-        self._dx, self._dy = e.x, e.y
+        self._dx, self._dy, self._deplace = e.x, e.y, False
 
     def _glisser(self, e):
-        self.root.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+        if abs(e.x - self._dx) + abs(e.y - self._dy) > 4:
+            self._deplace = True
+            self.flou = max(self.flou, 0.45)  # la nuée s'agite, comme secouée
+            self.root.geometry(f"+{e.x_root - self._dx}+{e.y_root - self._dy}")
+
+    def _relache(self, e):
+        if not getattr(self, "_deplace", False):  # clic simple, confirmé s'il n'est pas suivi d'un second clic
+            self._clic_prevu = self.root.after(260, self._clic_simple)
+        else:
+            self.sur_deplacement()
+
+    def _clic_simple(self):
+        self._clic_prevu = None
+        self.sur_clic()
+
+    def _double_clic(self, e):
+        if self._clic_prevu:
+            self.root.after_cancel(self._clic_prevu)
+            self._clic_prevu = None
+        self.ouvrir_panneau()
 
     def _animer(self):
         c, s, t, etat = self.toile, self.taille, self.t, self.etat
@@ -397,6 +430,17 @@ class Hologramme:
         curseur = "▌" if self._lettres < len(self.legende) or int(t * 2) % 2 else " "
         c.itemconfigure(self.texte, text=self.legende[:self._lettres].upper() + curseur,
                         fill=melange(self.coeur, "#ffffff", 0.2))
+
+        # Tâche en cours
+        c.itemconfigure(self.statut, text=self.statut_texte, fill=melange(FOND, self.coeur, 0.85))
+        if self.statut_fraction is None:
+            c.itemconfigure(self.barre_fond, state="hidden")
+            c.itemconfigure(self.barre, state="hidden")
+        else:
+            x0, x1 = s * 0.2, s * 0.2 + s * 0.6 * max(0.0, min(1.0, self.statut_fraction))
+            c.coords(self.barre, x0, s + 54, x1, s + 58)
+            c.itemconfigure(self.barre_fond, state="normal", fill=melange(FOND, self.halo, 0.9))
+            c.itemconfigure(self.barre, state="normal", fill=melange(self.coeur, "#ffffff", 0.2))
 
         self.t += 0.04
         self.root.after(40, self._animer)

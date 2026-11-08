@@ -98,13 +98,35 @@ class Panneau:
         toile.pack(side="left", fill="both", expand=True)
         barre.pack(side="right", fill="y")
 
+        toile.configure(yscrollincrement=40)  # pas de défilement confortable (en pixels)
+
+        def peut_defiler():
+            return toile.winfo_ismapped() and interieur.winfo_height() > toile.winfo_height()
+
         def molette(e):
-            if toile.winfo_ismapped() and interieur.winfo_height() > toile.winfo_height():
-                pas = -1 if (e.num == 4 or e.delta > 0) else 1
-                toile.yview_scroll(pas if abs(e.delta) < 120 else pas * max(1, abs(e.delta) // 120), "units")
+            if peut_defiler():
+                if e.num in (4, 5):                      # Linux (X11) : boutons 4 et 5
+                    pas = -1 if e.num == 4 else 1
+                else:                                    # Windows (±120 par cran), macOS (petites valeurs)
+                    pas = (-1 if e.delta > 0 else 1) * max(1, abs(e.delta) // 120)
+                toile.yview_scroll(pas, "units")
+
+        def pave_tactile(e):  # macOS, Tk 9 : défilement à deux doigts
+            if peut_defiler():
+                try:
+                    _, dy = self.root.tk.splitlist(self.root.tk.call("tk::PreciseScrollDeltas", e.delta))
+                    dy = float(dy)
+                except tk.TclError:
+                    return
+                if abs(dy) >= 1:
+                    toile.yview_scroll(int(-dy / 4) or (-1 if dy > 0 else 1), "units")
         # bind_all : la molette fonctionne même au-dessus des champs ; seul l'onglet visible défile
         for evt in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             self.root.bind_all(evt, molette, add="+")
+        try:
+            self.root.bind_all("<TouchpadScroll>", pave_tactile, add="+")
+        except tk.TclError:
+            pass  # Tk 8.6 : pas d'événement dédié, le pavé tactile envoie <MouseWheel>
         return interieur
 
     # --- Discussion -------------------------------------------------------------
@@ -322,7 +344,7 @@ class Panneau:
             return self.etat_piper.set("Installez d'abord cette voix.")
         self.cfg.update(voix_piper=cle, genre=piper.VOIX[cle]["genre"])
         sauver(self.cfg)
-        self.etat_piper.set(f"Voix utilisée : {piper.VOIX[cle]['nom']}. Relancez Orion pour l'entendre.")
+        self.etat_piper.set(f"Voix utilisée : {piper.VOIX[cle]['nom']}. Orion l'utilise dès sa prochaine phrase.")
 
     def _voix_systeme(self):
         self.cfg["voix_piper"] = ""
@@ -490,7 +512,7 @@ class Panneau:
             sauver(self.cfg)
             self._rafraichir_langues()
             messagebox.showinfo("Langue", f"On parlera à Orion en {langues.nom(code)}. Pensez à lui choisir une "
-                                          "voix dans cette langue (onglet Voix). Relancez Orion pour appliquer.")
+                                          "voix dans cette langue (onglet Voix). Orion l'applique tout seul dans quelques secondes.")
 
     def _credits(self):
         textes = langues.credits()
@@ -726,7 +748,9 @@ class Panneau:
         self.cfg["conversation"] = {**self.cfg.get("conversation", {}), "modele": self.conv_modele.get()}
         self.cfg["hologramme"].update(transparent=v["transparent"])
         sauver(self.cfg)
-        messagebox.showinfo("Réglages", "Enregistré. Relancez l'assistant pour appliquer.")
+        messagebox.showinfo("Réglages", "Enregistré. Orion applique ces réglages tout seul dans quelques "
+                                          "secondes (seule l'apparence de la fenêtre de l'hologramme demande "
+                                          "de le relancer).")
 
     def _manquants(self):
         from . import composants
@@ -776,7 +800,7 @@ class Panneau:
                     comp.installer(self.cfg, composants,
                                    lambda m: self.root.after(0, lambda: self.etat_installation.set(m)))
                     self.root.after(0, lambda: self.etat_installation.set(
-                        "Installation terminée. Relancez Orion pour en profiter."))
+                        "Installation terminée : Orion l'utilise tout seul dans quelques secondes."))
                 except Exception as e:
                     self.root.after(0, lambda: self.etat_installation.set(f"Échec de l'installation : {e}"))
             threading.Thread(target=installer, daemon=True).start()

@@ -18,7 +18,9 @@ from .config import UTILISATEUR
 
 DOSSIER = UTILISATEUR / "voix_neuronales"
 UA = {"User-Agent": "Orion-assistant/1.0 (assistant familial)"}
-VERSION = "v2.0.1"
+# Version figée : la branche 2.x a retiré la phonétisation eSpeak NG des voix Piper (il faudrait fournir les
+# phonèmes soi-même) ; la 1.13.8 fait encore tout, sur les cinq plateformes.
+VERSION = "v1.13.8"
 BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
 ARCHIVES = {("Darwin", "arm64"): "osx-arm64-shared", ("Darwin", "x86_64"): "osx-x64-shared",
             ("Linux", "x86_64"): "linux-x64-shared", ("Linux", "aarch64"): "linux-aarch64-shared-cpu",
@@ -45,9 +47,13 @@ def _archive_moteur():
     return nom, f"{BASE}/{VERSION}/{nom}"
 
 
+def _dossier_moteur():
+    return DOSSIER / "moteur" / VERSION  # une version par dossier : un moteur d'une autre version est remplacé
+
+
 def executable():
     nom = "sherpa-onnx-offline-tts.exe" if platform.system() == "Windows" else "sherpa-onnx-offline-tts"
-    trouves = list((DOSSIER / "moteur").rglob(nom)) if (DOSSIER / "moteur").exists() else []
+    trouves = list(_dossier_moteur().rglob(nom)) if _dossier_moteur().exists() else []
     return trouves[0] if trouves else None
 
 
@@ -109,9 +115,14 @@ def installer(cle, signaler=print):
                            f"{espace.limite(cfg) / 1e6:.0f} Mo fixée dans les réglages d'Orion.")
     if (DOSSIER / "piper").exists():  # ancien moteur Piper (archive macOS défectueuse) : on nettoie
         shutil.rmtree(DOSSIER / "piper", ignore_errors=True)
+    for ancien in (DOSSIER / "moteur").iterdir() if (DOSSIER / "moteur").exists() else []:
+        if ancien.name != VERSION:  # moteur d'une autre version (ou ancien format) : remplacé
+            shutil.rmtree(ancien, ignore_errors=True) if ancien.is_dir() else ancien.unlink()
+    for reste in DOSSIER.rglob("telechargement.tar.bz2"):  # archive d'une installation interrompue
+        reste.unlink()
     if executable() is None:
         nom, url = _archive_moteur()
-        _telecharger_et_extraire(url, DOSSIER / "moteur", signaler, "Moteur de voix naturelle")
+        _telecharger_et_extraire(url, _dossier_moteur(), signaler, "Moteur de voix naturelle")
         executable().chmod(0o755)
     if not fichier_modele(cle).exists():
         _telecharger_et_extraire(_url_voix(cle), DOSSIER / "voix", signaler, f"Voix {VOIX[cle]['nom']}")
