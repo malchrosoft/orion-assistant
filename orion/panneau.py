@@ -61,7 +61,10 @@ class Panneau:
         self.cerveau = Cerveau(self.cfg, Actions(self.cfg))
         self.root = tk.Tk()
         self.root.title(f"{self.cfg['nom']} — panneau")
-        self.root.geometry("780x560")
+        # entièrement visible au chargement, même sur un petit écran : taille bornée et fenêtre centrée
+        l, h = min(780, self.root.winfo_screenwidth() - 40), min(560, self.root.winfo_screenheight() - 100)
+        self.root.geometry(f"{l}x{h}+{(self.root.winfo_screenwidth() - l) // 2}"
+                           f"+{max(0, (self.root.winfo_screenheight() - h) // 2 - 20)}")
         theme(self.root)
         onglets = ttk.Notebook(self.root)
         onglets.pack(fill="both", expand=True)
@@ -188,10 +191,39 @@ class Panneau:
         ttk.Combobox(cadre, textvariable=self.domaine, values=DOMAINES, width=12).grid(row=0, column=2)
         ttk.Button(cadre, text="Lire et retenir", command=self._apprendre).grid(row=1, column=2)
 
+        pub = ttk.LabelFrame(f, text="Publication de jw.org (EPUB)", padding=6)
+        pub.pack(fill="x", pady=6)
+        self.lien_pub = tk.StringVar()
+        ttk.Label(pub, text="Lien de téléchargement").grid(row=0, column=0, sticky="w")
+        ttk.Entry(pub, textvariable=self.lien_pub, width=60).grid(row=0, column=1, sticky="we")
+        ttk.Button(pub, text="Télécharger", command=self._telecharger_publication).grid(row=0, column=2)
+        ttk.Button(pub, text="Chercher sur jw.org…", command=lambda: webbrowser.open(
+            "https://www.jw.org/fr/bibliotheque/")).grid(row=1, column=2)
+        ttk.Label(pub, text="Sur la page de la publication, ouvrez la fenêtre de téléchargement et copiez le lien "
+                            "de l'EPUB. Orion la retiendra : vous pourrez ensuite la demander par son titre.",
+                  foreground=DISCRET, wraplength=520).grid(row=1, column=0, columnspan=2, sticky="w")
+
         boutons = ttk.Frame(f)
         boutons.pack(fill="x")
         ttk.Button(boutons, text="Oublier la fiche apprise", command=self._oublier).pack(side="left")
         ttk.Button(boutons, text="Vérifier les références en ligne", command=self._verifier).pack(side="left")
+
+    def _telecharger_publication(self):
+        from . import dossiers, publications
+        d = publications.depuis_lien(self.lien_pub.get())
+        pub = publications.chercher(*d) if d else None
+        if not pub:
+            messagebox.showwarning("Publication", "Ce lien ne correspond à aucune publication EPUB en français.")
+            return
+        if not messagebox.askyesno("Publication", f"Télécharger « {pub['titre']} » ({pub['octets'] / 1e6:.1f} Mo) ?"):
+            return
+        try:
+            chemin = publications.telecharger(pub, dossiers.chemin(self.cfg))
+        except OSError as e:
+            messagebox.showerror("Publication", f"Le téléchargement n'a pas abouti : {e}")
+            return
+        publications.retenir(pub, *d)
+        messagebox.showinfo("Publication", f"« {pub['titre']} » est enregistrée :\n{chemin}")
 
     def _rafraichir_savoir(self):
         self.arbre.delete(*self.arbre.get_children())
@@ -531,6 +563,7 @@ class Panneau:
         ttk.Entry(ligne, textvariable=self.prenom).pack(side="left")
         ttk.Button(ligne, text="Enregistrer sa voix", command=self._enroler).pack(side="left")
         ttk.Button(ligne, text="Supprimer", command=self._supprimer_voix).pack(side="left")
+        ttk.Button(ligne, text="Couleur…", command=self._choisir_couleur).pack(side="left")
         self.etat_enrolement = tk.StringVar(value="Cliquez, puis lisez 5 phrases à voix haute, une par une. "
                                                   "Fermez Orion vocal pendant l'enregistrement (micro partagé).")
         ttk.Label(f, textvariable=self.etat_enrolement, foreground=DISCRET, wraplength=720,
@@ -541,8 +574,26 @@ class Panneau:
 
     def _rafraichir_voix(self):
         self.liste_voix.delete(0, "end")
+        from . import personnes
         for nom in self._profils():
-            self.liste_voix.insert("end", nom)
+            self.liste_voix.insert("end", f"● {nom}")
+            couleur = personnes.couleur(nom)
+            if couleur:
+                self.liste_voix.itemconfigure("end", foreground=couleur)
+
+    def _choisir_couleur(self):
+        """Couleur de la personne sélectionnée : elle teinte le halo de l'hologramme quand Orion la reconnaît."""
+        from tkinter import colorchooser
+        from . import personnes
+        choix = self.liste_voix.curselection()
+        if not choix:
+            messagebox.showinfo("Couleur", "Sélectionnez d'abord une personne dans la liste.")
+            return
+        nom = self.liste_voix.get(choix[0])[2:]
+        couleur = colorchooser.askcolor(personnes.couleur(nom) or "#4d8bff", title=f"Couleur de {nom}")[1]
+        if couleur:
+            personnes.modifier(nom, couleur=couleur)
+            self._rafraichir_voix()
 
     def _enroler(self):
         """Enregistre la voix dans le panneau même (la version installée n'a pas de console)."""
@@ -580,7 +631,7 @@ class Panneau:
     def _supprimer_voix(self):
         profils = self._profils()
         for i in self.liste_voix.curselection():
-            profils.pop(self.liste_voix.get(i), None)
+            profils.pop(self.liste_voix.get(i)[2:], None)
         PROFILS.write_text(json.dumps(profils))
         self._rafraichir_voix()
 
@@ -595,6 +646,7 @@ class Panneau:
             "dossier_musique": tk.StringVar(value=c["dossier_musique"]),
             "seuil_locuteur": tk.DoubleVar(value=c["seuil_locuteur"]),
             "transparent": tk.BooleanVar(value=c["hologramme"]["transparent"]),
+            "bip_ecoute": tk.BooleanVar(value=c.get("bip_ecoute", True)),
         }
         lignes = [("Nom de l'assistant", "nom"), ("Prononciation du nom (facultatif, ex. Oh-ri-on)", "nom_phonetique"),
                   ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
@@ -609,13 +661,30 @@ class Panneau:
         ttk.Button(f, text="▶", width=3, command=self._ecouter_nom).grid(row=1, column=2)
         n = len(lignes)
         ttk.Label(f, text="Exigence de reconnaissance des voix").grid(row=n, column=0, sticky="w")
-        ttk.Scale(f, from_=0.3, to=0.8, variable=self.champs["seuil_locuteur"]).grid(row=n, column=1, sticky="we")
+        seuil = ttk.Frame(f)
+        seuil.grid(row=n, column=1, sticky="we")
+        valeur = ttk.Label(seuil, width=34)
+
+        def afficher_seuil(*_):
+            x = self.champs["seuil_locuteur"].get()
+            valeur.configure(text=f"{x:.2f} — " + ("souple : reconnaît plus, confond plus" if x < 0.5 else
+                                                   "strict : confond moins, reconnaît moins" if x > 0.65 else
+                                                   "équilibré"))
+        ttk.Scale(seuil, from_=0.3, to=0.8, variable=self.champs["seuil_locuteur"],
+                  command=afficher_seuil).pack(side="left", fill="x", expand=True)
+        valeur.pack(side="left", padx=6)
+        afficher_seuil()
+        ttk.Label(f, text="Le terminal d'Orion affiche la ressemblance de chaque voix entendue : réglez le seuil "
+                          "un peu sous celle de la famille.", foreground="#8a94a6",
+                  wraplength=520).grid(row=n + 1, column=1, sticky="w")
+        ttk.Checkbutton(f, text="Bip doux quand Orion se met à écouter",
+                        variable=self.champs["bip_ecoute"]).grid(row=n + 2, column=1, sticky="w")
         ttk.Checkbutton(f, text="Hologramme transparent sans bordure",
-                        variable=self.champs["transparent"]).grid(row=n + 1, column=1, sticky="w")
-        ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 3, column=1, sticky="e", pady=8)
+                        variable=self.champs["transparent"]).grid(row=n + 3, column=1, sticky="w")
+        ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 4, column=1, sticky="e", pady=8)
 
         cadre = ttk.LabelFrame(f, text="Espace disque d'Orion", padding=6)
-        cadre.grid(row=n + 4, column=0, columnspan=3, sticky="we", pady=6)
+        cadre.grid(row=n + 5, column=0, columnspan=3, sticky="we", pady=6)
         self.texte_espace = tk.StringVar()
         ttk.Label(cadre, textvariable=self.texte_espace, justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
         self.jauge = ttk.Progressbar(cadre, length=420, maximum=100)
@@ -628,7 +697,7 @@ class Panneau:
         self._rafraichir_espace()
 
         cadre_d = ttk.LabelFrame(f, text="Dossiers d'enregistrement des documents (mot-clé → chemin)", padding=6)
-        cadre_d.grid(row=n + 5, column=0, columnspan=3, sticky="we", pady=6)
+        cadre_d.grid(row=n + 6, column=0, columnspan=3, sticky="we", pady=6)
         self.liste_dossiers = tk.Listbox(cadre_d, height=4, width=80)
         self.liste_dossiers.grid(row=0, column=0, columnspan=4, sticky="we")
         ttk.Button(cadre_d, text="Ajouter…", command=self._ajouter_dossier).grid(row=1, column=0, sticky="w")
@@ -641,7 +710,7 @@ class Panneau:
 
         from . import conversation
         cadre_c = ttk.LabelFrame(f, text="Conversation libre — modèle local, rien ne sort de l'ordinateur", padding=6)
-        cadre_c.grid(row=n + 6, column=0, columnspan=3, sticky="we", pady=6)
+        cadre_c.grid(row=n + 7, column=0, columnspan=3, sticky="we", pady=6)
         self.conv_modele = tk.StringVar(value=conversation.choix(c))
         for i, (cle, m) in enumerate(conversation.MODELES.items()):
             etat = "installé" if conversation.installe(cle) else "à télécharger"
@@ -744,6 +813,7 @@ class Panneau:
         self.cfg.update(nom=v["nom"].strip() or "Orion", nom_phonetique=v["nom_phonetique"].strip(),
                         aimp_exe=v["aimp_exe"],
                         dossier_musique=v["dossier_musique"], seuil_locuteur=round(v["seuil_locuteur"], 2),
+                        bip_ecoute=v["bip_ecoute"],
                         mots_eveil=[m.strip().lower() for m in v["mots_eveil"].split(",") if m.strip()])
         self.cfg["conversation"] = {**self.cfg.get("conversation", {}), "modele": self.conv_modele.get()}
         self.cfg["hologramme"].update(transparent=v["transparent"])
