@@ -9,11 +9,12 @@ import operator
 import os
 import random
 import re
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import bible, dossiers, espace, knowledge, meteo, personnes, publications, web
+from . import bible, dossiers, espace, knowledge, meteo, minuteur, personnes, publications, web
 from .conversation import Conversation
 from .persona import presentation
 from .texte import chiffres, normaliser, sans_accents
@@ -88,6 +89,8 @@ class Cerveau:
         self.en_attente = None        # action proposée, exécutée si l'utilisateur répond « oui »
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
+        self.minuteur = None              # compte à rebours en cours : {fin (monotonic), total, pour}
+        self.duree_demandee = False       # Orion vient de demander « pour combien de temps ? »
         self.question_tutoiement = None   # nom de la personne à qui l'on vient de demander « on se tutoie ? »
         self.oubli_a_confirmer = None     # (nom, mots ou None pour « tout ») en attente d'un « oui »
         self.demande_enrolement = None    # prénom dont la boucle vocale doit enregistrer la voix
@@ -349,6 +352,12 @@ class Cerveau:
         a = self.actions
 
         # --- Réponse à une proposition (« Puis-je consulter… ? ») -------------
+        if self.duree_demandee:  # réponse à « pour combien de temps ? »
+            self.duree_demandee = False
+            d = minuteur.duree(chiffres(t))
+            if d:
+                return self._lancer_minuteur(d, locuteur)
+
         if self.ville_demandee is not None:  # réponse à « pour quelle ville ? »
             demande, self.ville_demandee = self.ville_demandee, None
             if re.search(NON, t):
@@ -365,6 +374,22 @@ class Cerveau:
         if attente and len(t.split()) <= 2:  # « charge », « les coins » : mal entendu, on redemande
             self.en_attente = attente
             return "Pardon, c'est oui ou non ?", None
+
+        # --- Compte à rebours (interne à Orion, affiché sur l'hologramme) ---
+        if re.search(r"\b(compte a rebours|minuteur|minuterie|chrono|timer)\b", t):
+            if re.search(r"\b(annule|arrete|stop|supprime|enleve)", t):
+                if not self.minuteur:
+                    return "Il n'y a pas de compte à rebours en cours.", None
+                self.minuteur = None
+                return "Compte à rebours annulé.", None
+            d = minuteur.duree(chiffres(t))
+            if d:
+                return self._lancer_minuteur(d, locuteur)
+            if self.minuteur and re.search(r"\b(reste|combien|ou en)", t):
+                restant = self.minuteur["fin"] - time.monotonic()
+                return f"Il reste {minuteur.en_mots(restant)}.", None
+            self.duree_demandee = True
+            return "Pour combien de temps ?", None
 
         if re.search(r"\b(ta source|tes sources|d ou tu tiens|d ou ca vient|d ou viennent|"
                      r"ou as tu trouve|ou tu as trouve|qui te l a dit)\b", t):
@@ -442,7 +467,7 @@ class Cerveau:
         if m:
             appli = m.group(1).replace("bloc notes", "bloc-notes")
             return None, lambda: a.ouvrir(appli)
-        m = re.search(r"\b(?:cherche|recherche)\s+(.+?)(?:\s+sur (internet|wikipedia|le web))?$", t)
+        m = re.search(r"\b(?:cherche|recherche)\s+(?!dans (?:mes|les) publications|(?:la |une |des )?publications?\b)(.+?)(?:\s+sur (internet|wikipedia|le web))?$", t)
         if m:
             return None, lambda: a.recherche_web(m.group(1))
 
@@ -473,26 +498,38 @@ class Cerveau:
             return ("Pour quelle ville ? Je peux aussi la deviner d'après ta connexion internet, "
                     "si tu me dis « devine ».", None)
 
+        # --- Publications jw.org : recherche par l'utilisateur dans le site, puis lien de téléchargement ---
+        m = re.search(r"\b(?:cherche|trouve)\b.*\bpublications?\b\s+(?:sur |de |du |des |a propos d[eu]? )?(.+)$", t)
+        if m and not re.search(r"\bdans (?:mes|les) publications\b", t):
+            sujet = m.group(1)
+            a.ouvrir_lien(publications.RECHERCHE + urllib.parse.quote(sujet))
+            return ("Je t'ouvre la recherche de jw.org. Choisis la publication, copie son lien de téléchargement, "
+                    "puis dis-moi « télécharge le lien copié »."), None
+        if re.search(r"\b(telecharge|recupere)\b.*\blien\b", t):
+            return self._telecharger_lien(publications.presse_papiers())
+
         # --- Publications officielles (fichiers EPUB, téléchargement autorisé), après accord sur la taille ---
         if re.search(r"\b(telecharge|recupere|enregistre|procure)", t) and publications.demande(t):
             pubs = [p for p in (publications.chercher(*d) for d in publications.demande(t)) if p]
             if not pubs:
                 return "Je ne trouve pas cette publication : elle n'est peut-être pas encore parue.", None
             cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
-            titres = " et ".join(f"« {p['titre']} »" for p in pubs)
+            return self._proposer_publications(pubs, cle)
 
-            def telecharger():
-                try:
-                    for pub in pubs:
-                        a.ouvrir_lien(publications.telecharger(pub, dossiers.chemin(self.cfg, cle)).as_uri())
-                except OSError as e:
-                    return f"Le téléchargement n'a pas abouti : {e}."
-                self.derniere_origine = "bible"
-                return f"Voilà {titres}, dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
-            self.en_attente = telecharger
-            taille = espace.mo(sum(p["octets"] for p in pubs))
-            return (f"{titres} {'font' if len(pubs) > 1 else 'fait'} {taille}"
-                    f"{' en tout' if len(pubs) > 1 else ''}. Je {'les' if len(pubs) > 1 else 'le'} télécharge ?"), None
+        # --- Couleur de la personne (halo de l'hologramme) ---
+        m = re.search(r"\b(?:ma couleur|choisis|prends|mets)\b.*?\b(" + "|".join(personnes.COULEURS) + r")\b", t)
+        if m and re.search(r"\bcouleur\b|\bpour moi\b", t):
+            if locuteur == "invité":
+                return "Je ne reconnais pas encore ta voix : enregistre-la d'abord pour avoir ta couleur.", None
+            personnes.modifier(locuteur, couleur=personnes.COULEURS[m.group(1)])
+            return f"C'est noté{prenom} : ton halo sera {m.group(1)} quand je te reconnais.", None
+
+        # --- Recherche par thème dans les publications téléchargées (index local) ---
+        m = re.search(r"\b(?:que dit la bible|ce que dit la bible|versets?|textes? du jour|cherche dans (?:mes|les) "
+                      r"publications)\b.*?\b(?:sur|a propos d[eu]?|parlant d[eu]?|qui parlen?t? d[eu]?|parlait d[eu]?)"
+                      r"\s+(?:l |la |le |les |d )?(.+)$", t)
+        if m and not bible.reference(chiffres(t)):
+            return self._chercher_publications(m.group(1), t)
 
         # --- Questions bibliques : base externe, source donnée seulement sur demande ---
         self.derniere_fiche = None
@@ -504,6 +541,20 @@ class Cerveau:
             r = bible.rubrique(t)
             if r and r[0] == "jour":  # texte du jour : d'abord le livret téléchargé, sinon proposition
                 return self._texte_du_jour(r[1], lien)
+            if r and r[0] == "semaine":  # réunions : le cahier ou la Tour de Garde d'étude, en EPUB
+                return self._publication_de_la_semaine(r[1], t, lien)
+            # question biblique générale : d'abord les publications téléchargées (index local)
+            publications.indexer(self._dossiers_publications())
+            trouves = publications.rechercher(phrase)
+            if trouves:
+                self.derniere_origine = "bible"
+                return " ".join(f"{lieu} : {texte}" for lieu, texte in trouves[:2]), None
+            if not publications.fichier_local("nwt", self._dossiers_publications()):
+                bible_epub = publications.chercher("nwt")
+                if bible_epub:
+                    return self._proposer_publications(
+                        [bible_epub], ouvrir=False, puis=lambda: self._chercher_publications(phrase, "bible")[0],
+                        question="Je n'ai pas encore la Bible pour chercher. Je la télécharge ({taille}) ?")
 
             def ouvrir_bible():
                 a.ouvrir_lien(lien)
@@ -595,9 +646,10 @@ class Cerveau:
     def _verset(self, code, t, lien):
         """Lit le verset dans la Bible téléchargée ; sinon propose de la télécharger ; sinon l'ouvre."""
         livre, chapitre, debut = bible.LIVRES[int(code[:2]) - 1], int(code[2:5]), int(code[5:])
-        m = re.search(rf"\b{debut}\s*(?:a|au|jusqu a)\s*(?:verset\s*)?(\d+)\b", t)
+        # « 3 à 5 », « 3 et 4 » (le « et » disparaît à la conversion des nombres : « 21 3 4 »)
+        m = re.search(rf"\b{chapitre}\D+{debut}\s*(?:a|au|jusqu a|et)?\s*(?:versets?\s*)?(\d+)\b", t)
         fin = int(m.group(1)) if m and int(m.group(1)) > debut else None
-        nom = f"{livre.title()} {chapitre}, {'versets' if fin else 'verset'} {debut}{f' à {fin}' if fin else ''}"
+        nom = f"{bible.nom_livre(livre)} {chapitre}, {'versets' if fin else 'verset'} {debut}{f' à {fin}' if fin else ''}"
         self.derniere_origine = "bible"
         epub = publications.fichier_local("nwt", self._dossiers_publications())
         texte = publications.verset(epub, livre, chapitre, debut, fin) if epub else None
@@ -620,6 +672,75 @@ class Cerveau:
         self.en_attente = telecharger_puis_lire
         return (f"Je n'ai pas encore la Bible dans tes documents. Je la télécharge "
                 f"({espace.mo(pub['octets'])}) pour te lire ce verset ?"), None
+
+    def _chercher_publications(self, sujet, t):
+        """Lit les deux passages les plus proches du sujet (Bible, ou textes du jour si on les demande)."""
+        self.derniere_origine = "bible"
+        publications.indexer(self._dossiers_publications())  # rapide : seuls les nouveaux fichiers sont lus
+        source = ("es" if re.search(r"\btextes? du jour\b", t) else
+                  "nwt" if re.search(r"\b(bible|versets?)\b", t) else None)
+        trouves = publications.rechercher(sujet, source)
+        if not trouves:
+            return (f"Je ne trouve rien sur {sujet} dans tes publications téléchargées. Pour la Bible, "
+                    "demande-moi « télécharge la Bible »."), None
+        if source == "es":
+            lieu, texte = trouves[0]
+            texte = re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", "")
+            return f"Le {lieu[len('texte du '):]} en parlait : {texte}", None
+        return " ".join(f"{lieu} : {texte}" for lieu, texte in trouves[:2]), None
+
+    def _telecharger_lien(self, lien):
+        """Lien de téléchargement jw.org copié par l'utilisateur → EPUB proposé, puis retenu par son titre."""
+        d = publications.depuis_lien(lien) if "jw.org" in lien else None
+        if not d:
+            return ("Je ne trouve pas de lien de téléchargement jw.org copié. Sur la page de la publication, "
+                    "ouvre la fenêtre de téléchargement et copie le lien de l'EPUB."), None
+        pub = publications.chercher(*d)
+        if not pub:
+            return "Cette publication n'existe pas en EPUB en français.", None
+        publications.retenir(pub, *d)
+        return self._proposer_publications([pub])
+
+    def _proposer_publications(self, pubs, cle=None, ouvrir=True, puis=None, question=None):
+        """Annonce la taille des EPUB, puis (sur « oui ») les télécharge, les ouvre ou enchaîne sur `puis`."""
+        titres = " et ".join(f"« {p['titre']} »" for p in pubs)
+        taille = espace.mo(sum(p["octets"] for p in pubs))
+
+        def telecharger():
+            try:
+                for pub in pubs:
+                    chemin = publications.telecharger(pub, dossiers.chemin(self.cfg, cle))
+                    if ouvrir:
+                        self.actions.ouvrir_lien(chemin.as_uri())
+            except OSError as e:
+                return f"Le téléchargement n'a pas abouti : {e}."
+            self.derniere_origine = "bible"
+            return puis() if puis else f"Voilà {titres}, dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
+        self.en_attente = telecharger
+        if question:
+            return question.format(titres=titres, taille=taille), None
+        return (f"{titres} {'font' if len(pubs) > 1 else 'fait'} {taille}"
+                f"{' en tout' if len(pubs) > 1 else ''}. Je {'les' if len(pubs) > 1 else 'le'} télécharge ?"), None
+
+    def _publication_de_la_semaine(self, date, t, lien):
+        """Réunion de semaine → cahier Vie et ministère ; week-end → Tour de Garde d'étude (parue deux mois
+        avant). Ouvre le fichier déjà téléchargé, sinon propose de le télécharger ; la page web en dernier."""
+        if re.search(r"\b(tour de garde|week end|weekend|dimanche|samedi|etude de la tour)\b", t):
+            mois = date.replace(day=1) - datetime.timedelta(days=1)
+            mois = mois.replace(day=1) - datetime.timedelta(days=1)  # deux mois plus tôt
+            code, numero = "w", f"{mois.year}{mois.month:02d}"
+        else:
+            code, numero = "mwb", f"{date.year}{date.month - (date.month + 1) % 2:02d}"
+        self.derniere_origine = "bible"
+        pub = publications.chercher(code, numero)
+        if not pub:
+            self.actions.ouvrir_lien(lien)
+            return "Je ne trouve pas encore la publication de cette semaine : je t'affiche la page.", None
+        for dossier in self._dossiers_publications():
+            if (dossier / pub["nom"]).exists():
+                self.actions.ouvrir_lien((dossier / pub["nom"]).as_uri())
+                return f"Je t'ouvre « {pub['titre']} ».", None
+        return self._proposer_publications([pub])
 
     def _dossiers_publications(self):
         return [Path(os.path.expanduser(c)) for c in dossiers.liste(self.cfg).values()]
@@ -654,6 +775,11 @@ class Cerveau:
         self.en_attente = telecharger_puis_lire
         return (f"Je n'ai pas encore « {pub['titre']} » dans tes documents. Je le télécharge "
                 f"({espace.mo(pub['octets'])}) pour te le lire ?"), None
+
+    def _lancer_minuteur(self, secondes, locuteur):
+        remplace = " Il remplace le précédent." if self.minuteur else ""
+        self.minuteur = {"fin": time.monotonic() + secondes, "total": secondes, "pour": locuteur}
+        return f"C'est parti : {minuteur.en_mots(secondes)}.{remplace}", None
 
     def _libre(self, site):
         """Sites consultés sans demander l'accord (réglage « sites_libres ») ; rien n'en est stocké."""
