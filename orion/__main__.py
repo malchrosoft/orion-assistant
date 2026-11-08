@@ -415,7 +415,9 @@ def boucle_vocale(cfg, holo):
                 parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
-        if time.time() - dernier_dit["quand"] < 6 and est_echo(texte, dernier_dit["texte"]) \
+        # le micro est coupé pendant qu'Orion parle : seul un long écho résiduel peut encore arriver ;
+        # une réponse courte (« oui », « non ») n'est jamais prise pour de l'écho
+        if len(texte.split()) >= 3 and time.time() - dernier_dit["quand"] < 6 and est_echo(texte, dernier_dit["texte"]) \
                 and not trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])[0]:
             print(f"[écho ignoré] {texte}", flush=True)
             continue
@@ -449,7 +451,7 @@ def boucle_vocale(cfg, holo):
             holo.changer("ecoute", "Je t'écoute…")
             if nouveau:
                 parler(cerveau._adapter(random.choice([
-                    f"Oui {locuteur}, je t'écoute.", f"Ah, c'est toi {locuteur} ! Je t'écoute.",
+                    f"Je t'écoute, {locuteur}.", f"Ah, c'est toi {locuteur} ! Je t'écoute.",
                     f"Bonjour {locuteur}, que puis-je faire pour toi ?"]), locuteur))
             else:
                 parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
@@ -487,7 +489,7 @@ def boucle_vocale(cfg, holo):
             cerveau.a_recharger = False
             recharger()
         if nouveau and reponse and not normaliser(reponse).startswith(normaliser(locuteur)):
-            reponse = f"{random.choice(['Ah', 'Bonjour', 'Oui'])} {locuteur}. {reponse}"
+            reponse = f"{random.choice(['Ah', 'Bonjour', 'Tiens'])} {locuteur}. {reponse}"
         print(f"[{cfg['nom']}] {reponse}", flush=True)
         if locuteur != "invité":  # couleur éventuellement choisie à l'instant
             holo.interlocuteur(locuteur, personnes.couleur(locuteur))
