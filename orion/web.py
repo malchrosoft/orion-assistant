@@ -146,5 +146,8 @@ def wikipedia(question):
             return None
         page = resume(res[0]["title"])
     titre = page["title"]
+    # un article sans aucun mot commun avec la question est un faux résultat (« Tristane Banon » pour « pdf »)
+    if not set(normaliser(titre).split()) & set(mots.split()):
+        return None
     phrases = re.split(r"(?<=[.!?])\s+", page.get("extract", ""))
     return {"titre": titre, "contenu": " ".join(phrases[:2]), "url": page["content_urls"]["desktop"]["page"]}
