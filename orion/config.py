@@ -52,6 +52,7 @@ DEFAUT = {
     "langue_discussion": "fr",           # langue dans laquelle on parle à Orion (voir onglet Langues)
     "nom_phonetique": "",                # facultatif : comment prononcer le nom (ex. « Oh-ri-on »)
     "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin
+    "lecteur_musique": "",               # lecteur préféré : musique (Apple), spotify, vlc, aimp ; vide = automatique
     "aimp_exe": r"C:\Program Files\AIMP\AIMP.exe",
     "dossier_musique": "",
     "hologramme": {"taille": 420, "toujours_devant": True, "transparent": True,

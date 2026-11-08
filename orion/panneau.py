@@ -23,6 +23,7 @@ from .config import charger, sauver
 from .panneau_famille import Famille
 from .theme import ACCENT, DISCRET, FOND, SURFACE, TEXTE, theme
 
+LECTEURS = {"": "automatique", "musique": "Musique (Apple)", "spotify": "Spotify", "vlc": "VLC", "aimp": "AIMP"}
 ETOILES = {3: "★★★", 2: "★★", 1: "★", 0: "⚠ non vérifiée"}
 DOMAINES = ["maths", "mecanique", "electronique", "batiment", "web"]
 
@@ -561,6 +562,7 @@ class Panneau(Famille):
             "transparent": tk.BooleanVar(value=c["hologramme"]["transparent"]),
             "bip_ecoute": tk.BooleanVar(value=c.get("bip_ecoute", True)),
             "mode_silencieux": tk.BooleanVar(value=c.get("mode_silencieux", False)),
+            "lecteur_musique": tk.StringVar(value=LECTEURS.get(c.get("lecteur_musique", ""), "automatique")),
         }
         lignes = [("Nom de l'assistant", "nom"), ("Prononciation du nom (facultatif, ex. Oh-ri-on)", "nom_phonetique"),
                   ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
@@ -597,6 +599,9 @@ class Panneau(Famille):
                         variable=self.champs["bip_ecoute"]).pack(side="left")
         ttk.Checkbutton(ligne_options, text="Mode silencieux (réponses écrites)",
                         variable=self.champs["mode_silencieux"]).pack(side="left", padx=12)
+        ttk.Label(ligne_options, text="Lecteur de musique").pack(side="left", padx=(12, 4))
+        ttk.Combobox(ligne_options, textvariable=self.champs["lecteur_musique"], values=list(LECTEURS.values()),
+                     width=14, state="readonly").pack(side="left")
         ttk.Checkbutton(f, text="Hologramme transparent sans bordure",
                         variable=self.champs["transparent"]).grid(row=n + 3, column=1, sticky="w")
         ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 4, column=1, sticky="e", pady=8)
@@ -732,6 +737,7 @@ class Panneau(Famille):
                         aimp_exe=v["aimp_exe"],
                         dossier_musique=v["dossier_musique"], seuil_locuteur=round(v["seuil_locuteur"], 2),
                         bip_ecoute=v["bip_ecoute"], mode_silencieux=v["mode_silencieux"],
+                        lecteur_musique={n: c for c, n in LECTEURS.items()}.get(v["lecteur_musique"], ""),
                         mots_eveil=[m.strip().lower() for m in v["mots_eveil"].split(",") if m.strip()])
         self.cfg["conversation"] = {**self.cfg.get("conversation", {}), "modele": self.conv_modele.get()}
         self.cfg["hologramme"].update(transparent=v["transparent"])

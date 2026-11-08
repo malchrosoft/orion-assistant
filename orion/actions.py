@@ -1,10 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
 # SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
-"""Actions sur le PC : musique (AIMP, Spotify, touches multimédia), applications, volume."""
-import os
+"""Actions sur le PC : musique (voir musique.py), applications, volume."""
 import subprocess
 import sys
-import time
 import webbrowser
 
 WINDOWS = sys.platform == "win32"
@@ -17,7 +15,8 @@ VK = {"lecture": 0xB3, "suivant": 0xB0, "precedent": 0xB1, "stop": 0xB2,
 APPLIS_WINDOWS = {"navigateur": "start msedge", "bloc-notes": "notepad", "calculatrice": "calc",
                   "explorateur": "explorer", "spotify": "start spotify:", "aimp": None}
 APPLIS_MAC = {"navigateur": "open -a Safari", "calculatrice": "open -a Calculator",
-              "explorateur": "open ~", "spotify": "open -a Spotify", "bloc-notes": "open -a TextEdit"}
+              "explorateur": "open ~", "spotify": "open -a Spotify", "bloc-notes": "open -a TextEdit",
+              "musique": "open -a Music", "vlc": "open -a VLC"}
 
 
 def _touche(nom, fois=1):
@@ -28,11 +27,7 @@ def _touche(nom, fois=1):
             ctypes.windll.user32.keybd_event(VK[nom], 0, 0, 0)
             ctypes.windll.user32.keybd_event(VK[nom], 0, 2, 0)
     elif MAC:
-        scripts = {"lecture": 'tell application "Spotify" to playpause',
-                   "suivant": 'tell application "Spotify" to next track',
-                   "precedent": 'tell application "Spotify" to previous track',
-                   "stop": 'tell application "Spotify" to pause',
-                   "volume+": "set volume output volume ((output volume of (get volume settings)) + 10)",
+        scripts = {"volume+": "set volume output volume ((output volume of (get volume settings)) + 10)",
                    "volume-": "set volume output volume ((output volume of (get volume settings)) - 10)",
                    "muet": "set volume with output muted"}
         subprocess.run(["osascript", "-e", scripts[nom]], capture_output=True)
@@ -50,41 +45,9 @@ class Actions:
 
     # --- Musique -------------------------------------------------------------
     def musique(self, commande, lecteur=None, recherche=None):
-        if commande == "jouer" and lecteur == "spotify":
-            return self.spotify(recherche)
-        if lecteur == "aimp" or (commande == "jouer" and self._aimp_dispo()):
-            return self.aimp(commande)
-        _touche({"jouer": "lecture", "pause": "lecture", "suivant": "suivant",
-                 "precedent": "precedent", "stop": "stop"}[commande])
-        return {"jouer": "C'est parti.", "pause": "Pause.", "suivant": "Morceau suivant.",
-                "precedent": "Morceau précédent.", "stop": "J'arrête la musique."}[commande]
-
-    def _aimp_dispo(self):
-        return WINDOWS and os.path.exists(self.cfg["aimp_exe"])
-
-    def aimp(self, commande):
-        if not self._aimp_dispo():
-            return "Je ne trouve pas AIMP. Vérifie le chemin aimp_exe dans la configuration."
-        exe = self.cfg["aimp_exe"]
-        if commande == "jouer" and self.cfg.get("dossier_musique"):
-            subprocess.Popen([exe, "/ADD_PLAY", self.cfg["dossier_musique"]])
-        else:
-            arg = {"jouer": "/PLAY", "pause": "/PAUSE", "suivant": "/NEXT",
-                   "precedent": "/PREV", "stop": "/STOP"}[commande]
-            subprocess.Popen([exe, arg])
-        return "AIMP s'en occupe."
-
-    def spotify(self, recherche=None):
-        uri = f"spotify:search:{recherche}" if recherche else "spotify:"
-        if WINDOWS:
-            os.startfile(uri)
-        elif MAC:
-            subprocess.run(["open", uri])
-        else:
-            subprocess.Popen(["xdg-open", uri])
-        time.sleep(2.5)
-        _touche("lecture")
-        return f"Je cherche {recherche} sur Spotify." if recherche else "J'ouvre Spotify."
+        """Musique avec le lecteur demandé, ou celui qui tourne, ou le préféré (voir musique.py)."""
+        from . import musique
+        return musique.commander(commande, self.cfg, lecteur, recherche)
 
     # --- Système -------------------------------------------------------------
     def volume(self, sens):
