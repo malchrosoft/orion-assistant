@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import bible, dossiers, espace, export, knowledge, meteo, minuteur, personnes, publications, systeme, web
+from . import bible, bibliotheque, dossiers, espace, export, knowledge, meteo, minuteur, personnes, publications, systeme, web
 from .conversation import Conversation
 from .persona import presentation
 from .texte import chiffres, normaliser, sans_accents
@@ -101,11 +101,13 @@ class Cerveau:
         self.derniere_reponse = None      # dernière réponse donnée : « fais-en un document Word »
         self.export_en_cours = False
         self.derniers_fichiers = []       # résultats de la dernière recherche de fichiers (« ouvre le premier »)
-        self.minuteur = None              # compte à rebours en cours : {fin (monotonic), total, pour}
+        self.notes_a_jouer = []           # bips de départ des minuteurs, joués après la réponse orale
+        self.minuteurs = []               # comptes à rebours en cours (3 au plus) : {fin, total, pour, nom, couleur}
         self.duree_demandee = False       # Orion vient de demander « pour combien de temps ? »
         self.question_tutoiement = None   # nom de la personne à qui l'on vient de demander « on se tutoie ? »
         self.oubli_a_confirmer = None     # (nom, mots ou None pour « tout ») en attente d'un « oui »
         self.demande_enrolement = None    # prénom dont la boucle vocale doit enregistrer la voix
+        self.completer_voix = False       # compléter cette voix (sans effacer) plutôt que la remplacer
         self.conversation = Conversation(cfg)
         self.signaler = lambda message: None  # avancement des tâches longues (branché par la boucle vocale)
         self.a_recharger = False              # la boucle vocale recharge la configuration (voix, modèle…)
@@ -167,9 +169,18 @@ class Cerveau:
             return self._installer_manquants(locuteur), None
 
         # --- Voix de la famille, à l'oral ---------------------------------------
+        m = re.search(r"\b(?:complete|ameliore|perfectionne|mets a jour|actualise) (?:ma|mon) (?:voix|empreinte)\b"
+                      r"(?:.*?\b(?:je suis|je m appelle|c est) (\w+))?", t)
+        if m:
+            prenom = self._avec_accents(m.group(1) or "", phrase).capitalize() or (locuteur if connu else None)
+            if not prenom:
+                return "D'accord ! Dis-moi d'abord ton prénom : « complète ma voix, je suis… ».", None
+            self.demande_enrolement, self.completer_voix = prenom, True
+            return (f"D'accord {prenom}. Lis-moi cinq phrases de plus : j'ajoute ta voix d'aujourd'hui à ce que "
+                    "je connais déjà, sans rien effacer."), None
         m = re.search(r"\b(?:memorise|enregistre|retiens|apprends) (?:ma|mon) voix\b(?:.*?\b(?:je suis|je m appelle|c est) (\w+))?", t)
         if m:
-            prenom = (m.group(1) or "").capitalize() or (locuteur if connu else None)
+            prenom = self._avec_accents(m.group(1) or "", phrase).capitalize() or (locuteur if connu else None)
             if not prenom:
                 self.en_attente = None
                 return "D'accord ! Dis-moi d'abord ton prénom : « mémorise ma voix, je suis… ».", None
@@ -420,7 +431,7 @@ class Cerveau:
             self.duree_demandee = False
             d = minuteur.duree(chiffres(t))
             if d:
-                return self._lancer_minuteur(d, locuteur)
+                return self._lancer_minuteur(d, locuteur, self._avec_accents(minuteur.nom(t), phrase))
 
         if self.ville_demandee is not None:  # réponse à « pour quelle ville ? »
             demande, self.ville_demandee = self.ville_demandee, None
@@ -462,18 +473,35 @@ class Cerveau:
 
         # --- Compte à rebours (interne à Orion, affiché sur l'hologramme) ---
         # « compte à rebours » est souvent mal transcrit (« mémento à rebours », « conte à rebours ») : « à rebours » suffit
-        if re.search(r"\b(a rebours|minuteur|minuterie|chrono|timer)\b", t):
+        # tournures acceptées : « minuteur de 5 minutes », « compte 5 minutes », « décompte 30 s »,
+        # « préviens-moi dans 10 minutes », « mets 3 minutes », « lance 20 secondes »…
+        duree_dite = minuteur.duree(chiffres(t))
+        if re.search(r"\b(a rebours|minuteurs?|minuteries?|chronos?|chronometres?|timers?|decomptes?|decompter|"
+                     r"compteurs?)\b", t) \
+                or (duree_dite and re.search(r"^\d+\s*(?:heures?|h|minutes?|min|mn|secondes?|sec|s)\b.*\bpour\b|"
+                                             r"^(?:compte|mets|lance|demarre|programme|regle)\b|\bcompter?\b|"
+                                             r"\b(?:previens|previens moi|rappelle moi|alerte moi|sonne|bipe)\b.*\bdans\b", t)):
             if re.search(r"\b(annule|arrete|stop|supprime|enleve)", t):
-                if not self.minuteur:
+                if not self.minuteurs:
                     return "Il n'y a pas de compte à rebours en cours.", None
-                self.minuteur = None
-                return "Compte à rebours annulé.", None
-            d = minuteur.duree(chiffres(t))
-            if d:
-                return self._lancer_minuteur(d, locuteur)
-            if self.minuteur and re.search(r"\b(reste|combien|ou en)", t):
-                restant = self.minuteur["fin"] - time.monotonic()
-                return f"Il reste {minuteur.en_mots(restant)}.", None
+                vises = (list(self.minuteurs) if re.search(r"\b(tous|toutes|les minuteurs)\b", t) else
+                         [m for m in self.minuteurs if m["nom"] and normaliser(m["nom"]) in t]
+                         or (list(self.minuteurs) if len(self.minuteurs) == 1 else []))
+                if not vises:
+                    return ("Lequel ? " + ", ".join(minuteur.libelle(m) for m in self.minuteurs)
+                            + ", ou tous ?"), None
+                for m in vises:
+                    self.minuteurs.remove(m)
+                return ("Tous les minuteurs sont annulés." if len(vises) > 1 else
+                        minuteur.libelle(vises[0])[:1].upper() + minuteur.libelle(vises[0])[1:] + " est annulé."), None
+            if duree_dite:
+                return self._lancer_minuteur(duree_dite, locuteur, self._avec_accents(minuteur.nom(t), phrase))
+            if not self.minuteurs and re.search(r"\b(reste|combien|ou en)", t):
+                return "Aucun minuteur n'est en cours.", None
+            if self.minuteurs and re.search(r"\b(reste|combien|ou en)", t):
+                return "Il reste " + " ; ".join(
+                    f"{minuteur.en_mots(m['fin'] - time.monotonic())}"
+                    + (f" pour {m['nom']}" if m["nom"] else "") for m in self.minuteurs) + ".", None
             self.duree_demandee = True
             return "Pour combien de temps ?", None
 
@@ -606,8 +634,19 @@ class Cerveau:
             a.ouvrir_lien(publications.RECHERCHE + urllib.parse.quote(sujet))
             return ("Je t'ouvre la recherche de jw.org. Choisis la publication, copie son lien de téléchargement, "
                     "puis dis-moi « télécharge le lien copié »."), None
-        if re.search(r"\b(telecharge|recupere)\b.*\blien\b", t):
+        if re.search(r"\b(telecharge|recupere|apprends|ajoute|lis|indexe)\b.*\b(lien|adresse|url|fichier) copie", t) \
+                or re.search(r"\b(telecharge|recupere)\b.*\blien\b", t):
             return self._telecharger_lien(publications.presse_papiers())
+        if re.search(r"\b(quels?|liste)\b.*\bdocuments?\b.*\b(bibliotheque|appris|indexe|as tu)\b|\bta bibliotheque\b", t):
+            docs = bibliotheque.liste()
+            if not docs:
+                return ("Ma bibliothèque est vide. Copie l'adresse d'un document (PDF, EPUB, Word, Markdown, texte, "
+                        "page web), puis dis « ajoute le lien copié »."), None
+            return (f"J'ai {len(docs)} document{'s' if len(docs) > 1 else ''} : "
+                    + " ; ".join(t for t, _, _ in docs[:6]) + ("…" if len(docs) > 6 else "") + "."), None
+        m = re.search(r"\b(?:retire|supprime|enleve)\b.*\bdocument\b\s+(.+)$", t)
+        if m and bibliotheque.retirer(m.group(1)):
+            return f"J'ai retiré « {m.group(1)} » de ma bibliothèque. Le fichier, lui, reste sur l'ordinateur.", None
 
         # --- Publications officielles (fichiers EPUB, téléchargement autorisé), après accord sur la taille ---
         if re.search(r"\b(telecharge|recupere|enregistre|procure)", t) and publications.demande(t):
@@ -681,6 +720,20 @@ class Cerveau:
             return self._reponse_sourcee(fiche, decision), None
         if decision:
             return "Je n'ai pas de source fiable pour t'aider à décider ça. Demande à quelqu'un du métier.", None
+
+        # --- Bibliothèque : documents ajoutés depuis une URL ou un fichier (tous les mots de la question) ---
+        trouves = publications.rechercher(phrase, bibliotheque.PREFIXE, limite=2, tous_les_mots=True)
+        if trouves:
+            self.derniere_origine = "bibliotheque"
+            morceaux = []
+            for lieu, texte, cle in trouves[:2]:
+                doc = bibliotheque.document(cle)
+                nom = doc[0] if doc else "un document"
+                morceaux.append(f"D'après « {nom} »{'' if lieu in ('début', nom) else f', {lieu}'} : {texte}")
+                self.sources_reponse.append({"titre": f"{nom}, {lieu} (document ajouté, non vérifié)",
+                                             "url": doc[1] if doc and "://" in doc[1] else None, "niveau": 0,
+                                             "consulte": knowledge.aujourdhui(), "portee": "fiche"})
+            return " ".join(morceaux), None
 
         # --- Base externe : Wikipédia, après accord ----------------------------
         def consulter_wikipedia():
@@ -800,8 +853,21 @@ class Cerveau:
         return " ".join(f"{lieu} : {texte}" for lieu, texte, _ in trouves[:2]), None
 
     def _telecharger_lien(self, lien):
-        """Lien de téléchargement jw.org copié par l'utilisateur → EPUB proposé, puis retenu par son titre."""
+        """Lien copié : publication du site de l'éditeur (EPUB proposé, retenu par son titre), ou tout autre
+        document (URL internet ou intranet, fichier de l'ordinateur) ajouté à la bibliothèque et indexé."""
+        lien = lien.strip().strip('"')
         d = publications.depuis_lien(lien) if "jw.org" in lien else None
+        if not d and (re.match(r"(https?|file)://", lien) or Path(lien).expanduser().is_file()):
+            def ajouter():
+                try:
+                    with self._redaction("l'index du document", "INDEX"):
+                        nom, n = bibliotheque.ajouter(lien, dossiers.chemin(self.cfg) / "Bibliothèque")
+                except Exception as e:
+                    return f"Je n'arrive pas à lire ce document : {e}"
+                return (f"J'ai ajouté « {nom} » à ma bibliothèque : {n} passage{'s' if n > 1 else ''} indexé"
+                        f"{'s' if n > 1 else ''}. Pose-moi tes questions ; je citerai ce document, comme une "
+                        "source non vérifiée.")
+            return None, ajouter
         if not d:
             return ("Je ne trouve pas de lien de téléchargement jw.org copié. Sur la page de la publication, "
                     "ouvre la fenêtre de téléchargement et copie le lien de l'EPUB."), None
@@ -849,6 +915,9 @@ class Cerveau:
                 r = publications.programme_semaine(chemin, date)
                 if r:
                     self._citer(chemin, f"semaine du {r[0]}", lien)
+                    parties = publications.partie_du_programme(r[1], t)
+                    if parties is not r[1]:  # « le thème des joyaux », « les cantiques », « la lecture »…
+                        return f"Semaine du {r[0]}. " + ". ".join(parties) + "."
                     return f"Programme de la semaine du {r[0]}. " + ". ".join(r[1]) + "."
             self.actions.ouvrir_lien(chemin.as_uri())
             return "Je t'ouvre " + ("le cahier Vie et ministère." if code == "mwb" else "La Tour de Garde d'étude.")
@@ -1045,10 +1114,25 @@ class Cerveau:
                 "à rebours, les fiches PDF, la Bible et tes publications, et je renseigne sur ton ordinateur. "
                 "Demande-moi par exemple : « comment lancer un compte à rebours ? ».")
 
-    def _lancer_minuteur(self, secondes, locuteur):
-        remplace = " Il remplace le précédent." if self.minuteur else ""
-        self.minuteur = {"fin": time.monotonic() + secondes, "total": secondes, "pour": locuteur}
-        return f"C'est parti : {minuteur.en_mots(secondes)}.{remplace}", None
+    @staticmethod
+    def _avec_accents(nom, phrase):
+        """« pates » (phrase normalisée) → « pâtes », tel que la personne l'a dit."""
+        originaux = {normaliser(m): m.lower() for m in re.findall(r"[\w'’-]+", phrase)}
+        return " ".join(originaux.get(m, m) for m in nom.split())
+
+    def _lancer_minuteur(self, secondes, locuteur, nom=""):
+        """Ajoute un minuteur (3 au plus en même temps), avec un nom facultatif et sa propre couleur."""
+        if len(self.minuteurs) >= minuteur.MAXIMUM:
+            return (f"J'ai déjà {minuteur.MAXIMUM} minuteurs en cours, c'est mon maximum. Annule-en un d'abord : "
+                    + ", ".join(minuteur.libelle(m) for m in self.minuteurs) + "."), None
+        prises = {m["couleur"] for m in self.minuteurs}
+        rang = next(i for i, c in enumerate(minuteur.COULEURS) if c not in prises)  # première place libre
+        self.minuteurs.append({"fin": time.monotonic() + secondes, "total": secondes, "pour": locuteur,
+                               "nom": nom, "couleur": minuteur.COULEURS[rang], "note": minuteur.NOTES[rang]})
+        self.notes_a_jouer.append(minuteur.NOTES[rang])  # bip de départ, à la hauteur de ce minuteur
+        autres = len(self.minuteurs) - 1
+        return (f"C'est parti : {minuteur.en_mots(secondes)}{f' pour {nom}' if nom else ''}."
+                + (f" Ça fait {autres + 1} minuteurs en cours." if autres else "")), None
 
     def _libre(self, site):
         """Sites consultés sans demander l'accord (réglage « sites_libres ») ; rien n'en est stocké."""

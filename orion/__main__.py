@@ -97,14 +97,15 @@ def commande_dossiers(cfg, args):
 
 def enroler(cfg, nom):
     from .voix import Oreille, Profils
-    oreille, profils, vecteurs = Oreille(cfg), Profils(cfg["seuil_locuteur"]), []
+    oreille, profils, vecteurs, mesures = Oreille(cfg), Profils(cfg["seuil_locuteur"]), [], []
     print(f"Enregistrement de {nom} : lis 5 phrases à voix haute, une par une (3 secondes chacune).")
     while len(vecteurs) < 5:
         texte, vecteur = oreille.phrase()
         if vecteur:
             vecteurs.append(vecteur)
+            mesures.append(oreille.traits)
             print(f"  {len(vecteurs)}/5 ✓  « {texte} »")
-    profils.enregistrer(nom, vecteurs)
+    profils.enregistrer(nom, vecteurs, mesures)
     print(f"Voix de {nom} enregistrée.")
 
 
@@ -155,7 +156,7 @@ def boucle_vocale(cfg, holo):
     import random
     import re
     from . import modeles, personnes
-    from .bouche import LANGUES, Bouche, bip, voix_pour
+    from .bouche import LANGUES, Bouche, bip, parole_recente, voix_pour
     from .config import UTILISATEUR, sauver
     from .persona import salutation
     from .voix import Oreille, Profils
@@ -257,17 +258,18 @@ def boucle_vocale(cfg, holo):
         message = changer_langue(code) if code != cfg["langue"] else ""
         return f"D'accord, on parle maintenant en {langues.nom(code)}. {message}".strip()
 
-    def enregistrer_voix(prenom):
+    def enregistrer_voix(prenom, completer=False):
         """Enregistrement de la voix pendant la conversation : 5 phrases, puis confirmation orale."""
-        vecteurs = []
+        vecteurs, mesures = [], []
         while len(vecteurs) < 5:
             holo.changer("ecoute", f"Voix de {prenom} : phrase {len(vecteurs) + 1}/5")
             texte, empreinte = ecouter(True)
             if empreinte:
                 vecteurs.append(empreinte)
-                print(f"[voix de {prenom} {len(vecteurs)}/5] {texte}", flush=True)
-        profils.enregistrer(prenom, vecteurs)
-        parler(f"C'est fait, {prenom} : je reconnaîtrai ta voix.")
+                mesures.append(oreille.traits)  # hauteur, formants, timbre, débit de cette phrase
+                print(f"[voix de {prenom} {len(vecteurs)}/5] {texte} · {oreille.traits}", flush=True)
+        profils.enregistrer(prenom, vecteurs, mesures, completer)
+        parler(f"C'est fait, {prenom} : je reconnaîtrai {'encore mieux ' if completer else ''}ta voix.")
 
     def ecouter(eveille):
         """Attend une phrase complète, en affichant les mots au fur et à mesure."""
@@ -291,6 +293,9 @@ def boucle_vocale(cfg, holo):
                                                                    cfg["formules_eveil"])[0]):
                 holo.changer("ecoute", texte)
             if final and texte:
+                if parole_recente():  # une voix d'Orion (essai dans le panneau…) : son écho, pas une demande
+                    print(f"[écho d'une voix d'Orion ignoré] {texte}", flush=True)
+                    continue
                 return texte, empreinte
 
     def confirmer_langue():
@@ -346,6 +351,8 @@ def boucle_vocale(cfg, holo):
         try:
             chemins = [Path(os.path.expanduser(c)) for c in dossiers.liste(cfg).values()]
             bilan = publications.verifier(chemins)
+            from . import bibliotheque
+            bilan["disparus"] += bibliotheque.verifier()  # documents ajoutés dont le fichier a disparu
         except Exception as e:  # la vérification ne doit jamais empêcher Orion de démarrer
             print(f"[publications] vérification impossible : {e}", flush=True)
             return
@@ -399,27 +406,29 @@ def boucle_vocale(cfg, holo):
                 surveiller_une_fois(minuteur)
             except Exception as erreur:  # le fil du minuteur ne doit jamais s'arrêter
                 journal(erreur)
-                cerveau.minuteur, holo.decompte, holo.sonnerie = None, None, False
+                cerveau.minuteurs, holo.decomptes, holo.sonnerie = [], [], False
             time.sleep(0.2)
 
     def surveiller_une_fois(minuteur):
-        m = cerveau.minuteur
-        holo.decompte = (m["fin"], m["total"]) if m else None
-        if m and time.monotonic() >= m["fin"]:
-            cerveau.minuteur, holo.decompte = None, None
-            holo.sonnerie, holo.acquitte = True, False
+        holo.decomptes = [(m["fin"], m["total"], m["couleur"], m["nom"]) for m in cerveau.minuteurs]
+        fini = next((m for m in cerveau.minuteurs if time.monotonic() >= m["fin"]), None)
+        if fini:
+            m = fini
+            cerveau.minuteurs.remove(m)
+            holo.decomptes = [(x["fin"], x["total"], x["couleur"], x["nom"]) for x in cerveau.minuteurs]
+            holo.sonnerie, holo.acquitte = (m["couleur"], m["nom"]), False
             for _ in range(5):  # la fin du décompte sonne toujours, même si le bip d'écoute est coupé
                 if holo.acquitte:
                     break
-                bip(0.18)
+                bip(0.18, m.get("note"))  # même hauteur qu'au départ : on reconnaît le minuteur à l'oreille
                 time.sleep(1.6)
             holo.sonnerie = False
-            duree = minuteur.en_mots(m["total"])
-            if not holo.acquitte:
+            quoi = minuteur.libelle(m)
+            if not holo.acquitte:  # personne n'a cliqué : Orion l'annonce, par son nom, à qui l'a demandé
                 pour = m["pour"]
-                a_dire_de_soi.append(f"Le compte à rebours de {duree} est terminé." if pour == "invité" else
-                                cerveau._adapter(f"{pour}, ton compte à rebours de {duree} est terminé.", pour))
-            holo.derniere_action(f"{time.strftime('%H:%M')} · compte à rebours de {duree} terminé")
+                a_dire_de_soi.append(f"{quoi[:1].upper() + quoi[1:]} est terminé." if pour == "invité" else
+                                     cerveau._adapter(f"{pour}, {quoi} est terminé.", pour))
+            holo.derniere_action(f"{time.strftime('%H:%M')} · {quoi} terminé")
     threading.Thread(target=surveiller_minuteur, daemon=True).start()
 
     eveil_jusqua = 0.0
@@ -506,7 +515,7 @@ def boucle_vocale(cfg, holo):
                 voix_precedente.update(empreinte=empreinte, hz=hz)
             if locuteur == "invité" and courte and dernier_reconnu and eveille:  # seulement en pleine conversation
                 locuteur = dernier_reconnu
-            print(f"[voix : {locuteur} · ressemblance {profils.score:.2f} / seuil {cfg['seuil_locuteur']}"
+            print(f"[voix : {locuteur} · ressemblance {profils.score:.0%} / seuil {cfg['seuil_locuteur']:.0%}"
                   f"{' · ' + ' '.join(f'{c} {v:g}' for c, v in hz.items()) if hz else ''}"
                   f"{' · phrase courte' if courte else ''}]", flush=True)
             if locuteur != "invité" and profils.score >= cfg["seuil_locuteur"] + 0.05 and not courte \
@@ -568,9 +577,14 @@ def boucle_vocale(cfg, holo):
             if locuteur != "invité":  # couleur éventuellement choisie à l'instant
                 holo.interlocuteur(locuteur, personnes.couleur(locuteur))
             coupe = dire(reponse) is False
+            while cerveau.notes_a_jouer:  # bip de départ d'un minuteur, à sa hauteur, micro coupé
+                oreille.muet = True
+                bip(0.18, cerveau.notes_a_jouer.pop(0))
+                time.sleep(0.35)
+                reprendre_micro()
             if cerveau.demande_enrolement:
-                enregistrer_voix(cerveau.demande_enrolement)
-                cerveau.demande_enrolement = None
+                enregistrer_voix(cerveau.demande_enrolement, cerveau.completer_voix)
+                cerveau.demande_enrolement, cerveau.completer_voix = None, False
             # reste à l'écoute seulement si Orion attend une réponse (question posée), sinon se rendort
             attend = (reponse or "").rstrip().endswith("?") or cerveau.en_attente or cerveau.ville_demandee is not None or cerveau.question_tutoiement \
                 or cerveau.oubli_a_confirmer or cerveau.retrait_voix
