@@ -22,7 +22,7 @@ from . import knowledge
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger
-from .texte import normaliser, sans_accents, trouver_eveil, trouver_nom
+from .texte import est_echo, normaliser, sans_accents, trouver_eveil, trouver_nom
 
 
 def mode_texte(cfg):
@@ -174,6 +174,7 @@ def boucle_vocale(cfg, holo):
     holo.sur_clic = lambda: clics.update(en_attente=True)  # un clic sur l'hologramme vaut « dis Orion »
     holo.sur_deplacement = lambda: clics.update(deplace=True)
     annonces = {"etape": None, "palier": -1, "quand": 0.0}
+    dernier_dit = {"texte": "", "quand": 0.0}  # pour écarter l'écho de sa dernière phrase
 
     def signaler_tache(message):
         """Avancement d'une tâche longue : texte et barre sur l'hologramme ; à voix haute au début de chaque
@@ -214,13 +215,19 @@ def boucle_vocale(cfg, holo):
         oreille.vider()
         while not fini.is_set():
             entendu, final, _ = oreille.lire()
+            if not entendu or est_echo(entendu, texte):
+                continue  # sa propre voix captée par le micro
             nouveaux = " ".join(m for m in normaliser(entendu).split() if m not in dits)
+            # pendant qu'il parle, seuls un ordre d'arrêt ou la formule complète l'interrompent (pas son nom
+            # seul, qu'il prononce souvent et que le micro retranscrit de travers)
             if nouveaux and (re.search(STOP, nouveaux) or stop_lexique(entendu)
-                             or trouver_nom(nouveaux, cfg["mots_eveil"], debut_seulement=False)[0]):
+                             or trouver_eveil(nouveaux, cfg["mots_eveil"], cfg["formules_eveil"])[0]):
                 bouche.interrompre()
                 holo.changer("ecoute", "Je t'écoute…")
                 return False  # on garde ce que l'utilisateur est en train de dire
+        time.sleep(0.4)  # laisse s'éteindre la résonance des haut-parleurs
         oreille.vider()
+        dernier_dit.update(texte=texte, quand=time.time())
         return True
 
     def stop_lexique(entendu):
@@ -347,6 +354,9 @@ def boucle_vocale(cfg, holo):
                 holo.changer("ecoute", "Je t'écoute…")
                 parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
+            continue
+        if time.time() - dernier_dit["quand"] < 3 and est_echo(texte, dernier_dit["texte"]):
+            print(f"[écho ignoré] {texte}", flush=True)
             continue
         t = normaliser(texte)
         nomme, sans_nom = trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])

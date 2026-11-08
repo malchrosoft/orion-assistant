@@ -36,6 +36,19 @@ def _est_nom(mots, noms, apres_formule=False):
                for n in noms)
 
 
+def est_echo(entendu: str, dit: str, seuil=0.6):
+    """Vrai si ce que le micro a entendu ressemble à ce qu'Orion vient de dire (haut-parleurs sans casque).
+    Comparaison mot à mot tolérante : la transcription de sa propre voix n'est jamais exacte."""
+    import difflib
+    mots = [m for m in normaliser(entendu).split() if len(m) > 1]
+    reference = set(normaliser(dit).split())
+    if not mots or not reference:
+        return False
+    proches = sum(1 for m in mots if m in reference or any(
+        difflib.SequenceMatcher(None, m, r).ratio() >= 0.75 for r in reference if abs(len(r) - len(m)) <= 3))
+    return proches / len(mots) >= seuil
+
+
 def trouver_eveil(texte: str, noms, prefixes):
     """Formule d'éveil « hey Orion » / « dis Orion » (et ses transcriptions approximatives : « et orion »,
     « eh au rions »…) dans les premiers mots. Renvoie (trouvé, reste de la phrase après la formule)."""
