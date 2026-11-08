@@ -266,6 +266,24 @@ class Conversation:
         self.historiques[locuteur] = h[-HISTORIQUE_MAX:]
 
     # --- Réponse --------------------------------------------------------------------------------------------
+    def completer(self, consigne, texte, max_tokens=120):
+        """Appel ponctuel au modèle local (sans historique ni personnalité), ou None s'il est absent."""
+        global MOTEUR
+        MOTEUR = MOTEUR or Moteur()
+        adresse = MOTEUR.url(choix(self.cfg))
+        if not adresse:
+            return None
+        corps = json.dumps({"messages": [{"role": "system", "content": consigne}, {"role": "user", "content": texte}],
+                            "max_tokens": max_tokens, "temperature": 0.2,
+                            "chat_template_kwargs": {"enable_thinking": False}}).encode()
+        try:
+            req = urllib.request.Request(adresse + "/v1/chat/completions", corps, {"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                texte = json.load(r)["choices"][0]["message"]["content"]
+        except Exception:
+            return None
+        return re.sub(r"<think>.*?</think>", "", texte, flags=re.S).strip()
+
     def repondre_local(self, phrase, locuteur):
         global MOTEUR
         cle = choix(self.cfg)
