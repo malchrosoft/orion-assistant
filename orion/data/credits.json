@@ -129,6 +129,14 @@
    "motscles": "wikipedia encyclopedie base externe"
   },
   {
+   "nom": "pypdf",
+   "role": "la lecture des documents PDF de la bibliothèque",
+   "auteurs": "les contributeurs de pypdf",
+   "licence": "BSD-3-Clause",
+   "url": "https://github.com/py-pdf/pypdf",
+   "motscles": "pypdf pdf lecture bibliotheque"
+  },
+  {
    "nom": "Open-Meteo",
    "role": "la météo dite à voix haute",
    "auteurs": "Open-Meteo et les services météorologiques nationaux",

@@ -190,6 +190,8 @@ def _base():
     db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(publication, lieu, texte, "
                "tokenize='unicode61 remove_diacritics 2')")
     db.execute("CREATE TABLE IF NOT EXISTS fichiers (nom TEXT PRIMARY KEY, date REAL)")
+    # documents de la bibliothèque (ajoutés depuis une URL ou un fichier) : titre, adresse d'origine, chemin
+    db.execute("CREATE TABLE IF NOT EXISTS documents (publication TEXT PRIMARY KEY, titre TEXT, url TEXT, chemin TEXT)")
     return db
 
 
@@ -246,7 +248,7 @@ def indexer(dossiers_possibles):
     return traites
 
 
-def rechercher(sujet, publication=None, limite=3):
+def rechercher(sujet, publication=None, limite=3, tous_les_mots=False):
     """[(lieu, texte, publication)] les plus pertinents pour `sujet` (mots ou débuts de mots : « pardon » → « pardonner »)."""
     from .knowledge import VIDES
     from .texte import normaliser
@@ -258,7 +260,7 @@ def rechercher(sujet, publication=None, limite=3):
     db = _base()
     filtre = " AND publication LIKE ?" if publication else ""  # « es » : tous les livrets d'Examinons
     try:
-        for liaison in (" AND ", " OR "):  # d'abord tous les mots, sinon l'un d'eux
+        for liaison in (" AND ",) if tous_les_mots else (" AND ", " OR "):  # tous les mots, sinon l'un d'eux
             # débuts de mots : « pardon » trouve « pardonnez » ; les mots longs perdent leur terminaison
             requete = "texte : (" + liaison.join(f'"{m if len(m) < 7 else m[:-2]}"*' for m in mots) + ")"
             lignes = db.execute(f"SELECT lieu, texte, publication FROM passages WHERE passages MATCH ?{filtre} "
@@ -423,3 +425,33 @@ def origine(reference):
     if m.group(4):
         texte += f", page{'s' if '-' in m.group(4) else ''} {m.group(4)}"
     return texte + (f", {m.group(5).strip()}" if m.group(5) else "")
+
+
+# Rubriques du programme hebdomadaire (titres en capitales dans le cahier) et mots pour les demander
+RUBRIQUES_PROGRAMME = {"joyaux": "joyaux", "perles": "perles", "ministere": "applique", "applique": "applique",
+                       "vie chretienne": "vie chretienne", "etude biblique": "etude biblique"}
+
+
+def partie_du_programme(parties, t):
+    """Seulement ce que la phrase demande dans le programme : une rubrique (« les joyaux ») avec ses parties,
+    les cantiques, ou la lecture de la semaine. Renvoie `parties` tel quel si rien de précis n'est demandé."""
+    from .texte import normaliser
+    if re.search(r"\bcantiques?\b", t):
+        return [p for p in parties if "cantique" in normaliser(p)] or parties
+    if re.search(r"\blecture\b", t) and not re.search(r"\blecture de la bible\b", t):
+        return [p for p in parties if normaliser(p).startswith("lecture de la semaine")] or parties
+    for mot, debut in RUBRIQUES_PROGRAMME.items():
+        if re.search(rf"\b{mot}\b", t):
+            for i, p in enumerate(parties):
+                if normaliser(p).startswith(debut) or (debut in ("perles", "etude biblique") and debut in normaliser(p)):
+                    if debut in ("perles", "etude biblique"):
+                        return [p]
+                    suite = [parties[i]]
+                    for q in parties[i + 1:]:  # jusqu'à la rubrique suivante (titre sans numéro ni durée)
+                        if not re.match(r"^\d+\.", q) and "minute" not in q:
+                            break
+                        suite.append(q)
+                    if re.search(r"\btheme\b", t) and len(suite) > 1:
+                        return [suite[0], suite[1]]  # « le thème des joyaux » : la rubrique et son premier sujet
+                    return suite
+    return parties

@@ -18,7 +18,8 @@ Dans les installateurs, les métadonnées et les textes de licence de chaque paq
 | comtypes, pywin32 (Windows) | Accès aux voix SAPI | MIT ; PSF |
 | CTranslate2 | Moteur de traduction hors ligne | MIT |
 | SentencePiece | Découpage du texte pour la traduction | Apache 2.0 |
-| NumPy | Calcul (dépendance de CTranslate2) | BSD-3-Clause (et licences des sous-composants) |
+| NumPy | Calcul (traits de la voix ; dépendance de CTranslate2) | BSD-3-Clause (et licences des sous-composants) |
+| pypdf | Lecture du texte des PDF de la bibliothèque | BSD-3-Clause |
 | PyYAML | Dépendance de CTranslate2 | MIT |
 | requests, urllib3, idna, charset-normalizer | Dépendances de Vosk | Apache 2.0 ; MIT ; BSD-3-Clause ; MIT |
 | tqdm | Dépendance de Vosk | MPL-2.0 et MIT — source : <https://github.com/tqdm/tqdm> |
