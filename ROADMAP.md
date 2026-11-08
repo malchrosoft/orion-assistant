@@ -92,6 +92,12 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Noms de fichiers et formats lus comme on les dit, dans chaque langue : « rapport.pdf » → « rapport point
+  P D F », « .docx » → « doc X », « epub » en un mot ; jamais la signification du sigle.
+- Sources citées dans les documents générés à partir des publications téléchargées : publication et
+  emplacement exact (verset, jour, semaine), lien de consultation, et source d'origine quand le texte en
+  donne une (référence d'article en fin de texte du jour).
+- Orion se remet seul d'une erreur, avec humour, et relance son écoute si elle s'arrête.
 - Rapport PDF de qualité professionnelle composé en LaTeX (« fais-en un rapport PDF de qualité pro »),
   si Tectonic est installé ; sinon le PDF intégré.
 - Documents annoncés avec leur nom et leur emplacement, ouverture proposée ; Orion se vante parfois de sa
