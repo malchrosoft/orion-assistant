@@ -1,0 +1,92 @@
+[
+ {
+  "titre": "M'appeler et m'interrompre",
+  "motscles": "appeler reveiller parler ecouter formule bip clic cliquer interrompre couper taire arreter stop hologramme",
+  "contenu": "Dis « dis-moi Orion », ou clique sur mon hologramme. Un petit bip t'indique que je t'écoute. Pendant que je parle, un clic sur l'hologramme me fait taire."
+ },
+ {
+  "titre": "Reconnaître les voix de la famille",
+  "motscles": "voix reconnaitre reconnaissance famille enregistrer memoriser empreinte qui suis je retirer couleur",
+  "contenu": "Je reconnais chaque membre de la famille à sa voix. Dis « mémorise ma voix, je suis… » et lis-moi cinq phrases, ou passe par le panneau, onglet Famille. Chacun peut choisir sa couleur : « ma couleur est le vert »."
+ },
+ {
+  "titre": "Me souvenir de toi",
+  "motscles": "retenir retiens souvenir memoire memoriser oublier oublie tutoyer vouvoyer tutoiement vouvoiement",
+  "contenu": "Dis « retiens que… » et je m'en souviendrai, sur cet ordinateur seulement. « Oublie que… » efface un souvenir ; pour tout oublier, je demande confirmation. Je demande aussi à chacun si on se tutoie."
+ },
+ {
+  "titre": "Musique, volume et applications",
+  "motscles": "musique morceau chanson playlist spotify aimp joue mets pause suivant volume son monte baisse application appli ouvrir lancer",
+  "contenu": "Je lance la musique sur Spotify ou AIMP : « mets de la musique », « joue… », « pause », « morceau suivant ». Je règle le volume : « monte le volume ». J'ouvre aussi tes applications : « ouvre la calculatrice »."
+ },
+ {
+  "titre": "Heure, date et calculs",
+  "motscles": "heure date jour calcul calculer combien fait plus moins fois divise",
+  "contenu": "Demande-moi l'heure, la date, ou un calcul : « combien font 12 fois 7 ? »."
+ },
+ {
+  "titre": "Compte à rebours",
+  "motscles": "compte rebours minuteur minuterie chrono timer temps reste annuler bip sonnerie",
+  "contenu": "Dis « compte à rebours de 5 minutes ». Il s'affiche sur mon hologramme ; à la fin, je bipe cinq fois, puis je préviens la personne qui l'a demandé si personne n'a cliqué. « Combien de temps reste-t-il ? » et « annule le minuteur » marchent aussi."
+ },
+ {
+  "titre": "Météo",
+  "motscles": "meteo temps pluie soleil prevision ville demain temperature devine",
+  "contenu": "Demande « quel temps fera-t-il demain ? » : je te dis la météo de ta ville. La première fois, je te demande laquelle, ou je la devine si tu me dis « devine ». « Change ma ville » pour en changer, « montre-moi la météo » pour l'afficher."
+ },
+ {
+  "titre": "Questions de connaissance et sources",
+  "motscles": "connaissance savoir question source sources wikipedia verifier maths mecanique electronique batiment science",
+  "contenu": "Je réponds d'abord avec ma base locale : maths jusqu'au lycée, mécanique, électronique, bâtiment. Sinon je consulte Wikipédia. Demande « quelle est ta source ? » et je te dis d'où vient ma réponse."
+ },
+ {
+  "titre": "Sur les épaules de géants",
+  "motscles": "geants epaules recherche approfondie etat art resolu probleme publications scientifiques sources ouvertes",
+  "contenu": "Dis « sur les épaules de géants : … » et je cherche comment d'autres ont déjà résolu ce problème, dans des sources ouvertes en ligne, avec ton accord. Je te dis l'idée fondatrice en trois phrases et je te prépare une fiche avec toute la lignée et les sources."
+ },
+ {
+  "titre": "Fiches et documents",
+  "motscles": "fiche pdf document resume imprimer generer dossier word docx markdown html page web exporter enregistrer reponse",
+  "contenu": "Dis « fais une fiche sur le théorème de Pythagore » pour un PDF avec ses sources. Après une réponse, dis « fais-en un document Word », « exporte ça en Markdown », « en page web » ou « en PDF » : je l'enregistre dans tes documents et je l'ouvre."
+ },
+ {
+  "titre": "Bible et textes du jour",
+  "motscles": "bible biblique verset versets texte jour lire chapitre reunion programme semaine cahier pardon theme",
+  "contenu": "Je lis un verset (« lis Jean 3 16 »), le texte du jour, ou le programme de la réunion de la semaine, à partir des publications téléchargées. « Que dit la Bible sur le pardon ? » cherche les passages qui en parlent."
+ },
+ {
+  "titre": "Publications à télécharger",
+  "motscles": "publication publications telecharger epub livre brochure revue lien copie chercher",
+  "contenu": "Dis « télécharge la Bible » ou « télécharge le cahier de janvier » : je te donne la taille, puis je l'enregistre. Pour une autre publication, dis « cherche la publication sur la famille », copie son lien de téléchargement, puis « télécharge le lien copié »."
+ },
+ {
+  "titre": "Ton ordinateur",
+  "motscles": "ordinateur espace libre place disque disques fichier dossier chercher trouver systeme version processeur memoire",
+  "contenu": "Je te dis l'espace libre, les disques branchés, les caractéristiques de l'ordinateur et sa version. « Cherche le fichier… » ou « où est le dossier… » cherche dans ton dossier personnel, puis « ouvre le premier ». Je ne modifie rien."
+ },
+ {
+  "titre": "Langues",
+  "motscles": "langue langues anglais espagnol allemand traduire traduction parler installer",
+  "contenu": "On peut discuter dans d'autres langues : « parlons en anglais ». La langue s'installe d'abord dans le panneau, onglet Langues, qui annonce la place nécessaire."
+ },
+ {
+  "titre": "Discuter",
+  "motscles": "discuter discussion conversation bavarder parler modele",
+  "contenu": "On peut simplement discuter : j'utilise un modèle de conversation installé sur l'ordinateur, sans rien envoyer sur internet."
+ },
+ {
+  "titre": "Panneau et réglages",
+  "motscles": "panneau reglages reglage parametres configurer espace limite double clic installer manque",
+  "contenu": "Double-clique sur mon hologramme pour ouvrir le panneau : voix, famille, langues, savoir et réglages. La place que j'ai le droit d'occuper se règle là, jamais à la voix. « Installe ce qui te manque » ajoute mes composants absents."
+ },
+ {
+  "titre": "Mon hologramme",
+  "motscles": "hologramme couleur couleurs gris cyan dore rouge violet etat ecran fenetre",
+  "contenu": "Ma couleur montre ce que je fais : gris perle au repos, cyan quand j'écoute, doré et rouge quand je parle, violet quand j'agis. En haut, la personne reconnue et ma dernière action."
+ },
+ {
+  "titre": "Crédits",
+  "motscles": "credits auteur logiciels libres composants licence qui t a fait",
+  "contenu": "Dis « crédits » pour savoir qui m'a fait et avec quels logiciels libres, ou « crédits en PDF » pour un document."
+ }
+]

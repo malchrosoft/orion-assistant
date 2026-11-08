@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from . import bible, dossiers, espace, knowledge, meteo, minuteur, personnes, publications, web
+from . import bible, dossiers, espace, export, knowledge, meteo, minuteur, personnes, publications, systeme, web
 from .conversation import Conversation
 from .persona import presentation
 from .texte import chiffres, normaliser, sans_accents
@@ -39,6 +39,10 @@ FACTUELLE = (r"\b(c est quoi|qu est ce que|qu est ce qu|qui est|qui etait|qui a 
              r"comment fonctionne|pourquoi (le|la|les|l)|quelle est la (capitale|population|distance|hauteur))\b")
 
 METEO = r"\b(meteo|quel temps|va t il (pleuvoir|neiger|faire beau)|il va pleuvoir|previsions?)\b"
+CAPACITES = json.loads((Path(__file__).parent / "data" / "capacites.json").read_text(encoding="utf-8"))
+CAPACITES_TOT = (r"^comment (?:je |on |est ce qu on |faire pour |puis je |peut on |dois je |tu )?"
+                 r"|\b(que|quoi|qu est ce que) (tu sais|sais tu|tu peux|peux tu) faire\b"
+                 r"|\btu sais faire quoi\b|\btes (fonctions|capacites)\b|\ba quoi tu sers\b")
 OUI = r"^(oui|ouais|ok|d accord|vas y|va s y|bien sur|volontiers|je veux bien|oui merci|si|fais le|c est parti|(tele)?charge)\b"
 NON = r"^(non|pas la peine|laisse tomber|non merci|annule)\b"
 
@@ -89,6 +93,9 @@ class Cerveau:
         self.en_attente = None        # action proposée, exécutée si l'utilisateur répond « oui »
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
+        self.derniere_reponse = None      # dernière réponse donnée : « fais-en un document Word »
+        self.export_en_cours = False
+        self.derniers_fichiers = []       # résultats de la dernière recherche de fichiers (« ouvre le premier »)
         self.minuteur = None              # compte à rebours en cours : {fin (monotonic), total, pour}
         self.duree_demandee = False       # Orion vient de demander « pour combien de temps ? »
         self.question_tutoiement = None   # nom de la personne à qui l'on vient de demander « on se tutoie ? »
@@ -228,7 +235,9 @@ class Cerveau:
                 r"\b(augmente|diminue|change|modifie|regle|agrandis|reduis|passe)\b", t):
             return self._adapter("Ce réglage ne se change pas à la voix, par sécurité : passe par le panneau, onglet "
                                  "Réglages, ou par la commande orion limite.", locuteur), None
-        if re.search(r"\b(combien de place|quelle place|espace disque|combien d espace|ta memoire est pleine)\b", t):
+        # la place qu'occupe Orion (« tu prends combien de place ? ») ; l'espace libre de l'ordinateur est plus loin
+        if re.search(r"\b(combien de place|quelle place|espace disque|combien d espace|ta memoire est pleine)\b", t) \
+                and not re.search(r"\b(libre|disponible|reste|disques?|ordinateur|ordi|pc|mac)\b", t):
             o, l, r = espace.etat(self.cfg)
             return self._adapter(f"J'occupe {espace.mo(o)} sur les {espace.mo(l)} autorisés, "
                                  f"soit {r * 100:.0f} %.", locuteur), None
@@ -328,6 +337,11 @@ class Cerveau:
 
     def _finaliser(self, texte, phrase, locuteur):
         """Vouvoiement si besoin, mémoire locale, et une fois par session : « on se tutoie ? »."""
+        if not self.export_en_cours and texte and not texte.rstrip().endswith("?"):
+            sources = [s for s in (self.derniere_fiche or {}).get("sources", []) if s.get("consulte")] \
+                if self.derniere_origine in ("locale", "wikipedia") else []
+            self.derniere_reponse = {"question": phrase, "contenu": texte, "sources": sources}
+        self.export_en_cours = False
         if locuteur == "invité":
             return texte
         texte = self._adapter(texte, locuteur)
@@ -375,6 +389,22 @@ class Cerveau:
             self.en_attente = attente
             return "Pardon, c'est oui ou non ?", None
 
+        # --- Sur les épaules de géants : comment d'autres ont déjà résolu ce problème (sources ouvertes) ---
+        if re.search(r"\b(epaules? d(?:e|es) geants?|recherche approfondie|etat de l art|qui a deja resolu|"
+                     r"comment (?:les autres|d autres|on) (?:ont|a) (?:deja )?resolu)\b", t) \
+                and not re.match(r"comment (?:je|on|faire|tu)\b(?! .*resolu)", t):  # « comment je fais une… » : aide
+            sujet = re.sub(r"^.*?\b(?:geants?|approfondie|de l art|resolu)\b\s*", "", t)
+            sujet = re.sub(r"^(?:(?:sur|pour|de|du|des|a propos d[eu]?|concernant|le|la|les|l)\s+)+", "", sujet).strip()
+            if len(sujet.split()) < 2:
+                return "Sur quel problème veux-tu que je cherche comment d'autres l'ont résolu ?", None
+            return self._geants(sujet)
+
+        # --- Ce qu'Orion sait faire : réponse courte, ciblée selon la question ---
+        if re.search(CAPACITES_TOT, t):
+            reponse = self._capacites(t, generique=not t.startswith("comment"))
+            if reponse:
+                return reponse, None
+
         # --- Compte à rebours (interne à Orion, affiché sur l'hologramme) ---
         if re.search(r"\b(compte a rebours|minuteur|minuterie|chrono|timer)\b", t):
             if re.search(r"\b(annule|arrete|stop|supprime|enleve)", t):
@@ -390,6 +420,11 @@ class Cerveau:
                 return f"Il reste {minuteur.en_mots(restant)}.", None
             self.duree_demandee = True
             return "Pour combien de temps ?", None
+
+        # --- Ordinateur (lecture seule) : disques, espace, système, versions, fichiers ---
+        reponse = self._ordinateur(t)
+        if reponse:
+            return reponse
 
         if re.search(r"\b(ta source|tes sources|d ou tu tiens|d ou ca vient|d ou viennent|"
                      r"ou as tu trouve|ou tu as trouve|qui te l a dit)\b", t):
@@ -410,6 +445,13 @@ class Cerveau:
             return None, generer
         cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
         t_sujet = re.sub(rf"\s+(?:dans|vers) (?:le dossier |mon dossier |mes )?{normaliser(cle)}\b", "", t) if cle else t
+        # document tiré de la réponse précédente : « fais-en un document Word », « exporte ça en HTML »
+        if re.search(r"\b(fais|fait|genere|cree|exporte|enregistre|mets|transforme|prepare)\b", t) and re.search(
+                r"\b(document|fichier|word|docx|markdown|html|page web|pdf)\b", t) and (
+                re.search(r"\b(en|ca|cela|ta reponse|la reponse|ce que tu (?:viens de|as) dit|de tout ca)\b", t)
+                and not re.search(r"\b(?:sur|a propos de|concernant) \w+", t)):
+            return self._exporter(export.format_demande(t), cle)
+
         m = re.search(r"\b(?:fiche|document|pdf|resume)\b.*?\b(?:sur|de|du|des|a propos de|concernant) (?:la |le |les |l )?(.+?)(?: avec (?:des )?renvois?| en pdf)*$", t_sujet)
         if m and re.search(r"\b(pdf|fiche|document)\b", t) and re.search(r"\b(fais|fait|genere|cree|prepare|imprime|donne)\b", t):
             return self._fiche_pdf(m.group(1), bool(re.search(r"\brenvois?\b", t)), cle)
@@ -464,6 +506,8 @@ class Cerveau:
             sens = "moins" if re.search(r"\b(baisse|moins|diminue)\b", t) else "plus"
             return None, lambda: a.volume(sens)
         m = re.search(r"\b(?:ouvre|lance|demarre)\s+(?:le |la |l )?(.+)$", t)
+        if m and (bible.est_biblique(t) or re.search(r"\b(cahier|tour de garde|programme|reunion)\b", t)):
+            m = None  # « ouvre le cahier de la semaine » : une publication, pas une application
         if m:
             appli = m.group(1).replace("bloc notes", "bloc-notes")
             return None, lambda: a.ouvrir(appli)
@@ -564,6 +608,11 @@ class Cerveau:
                 return None, ouvrir_bible
             self.en_attente = ouvrir_bible
             return "Puis-je consulter ma base de connaissance externe ?", None
+
+        if re.search(r"\b(sais tu|tu sais|est ce que tu (sais|peux)|peux tu|tu peux|tu es capable)\b", t):
+            reponse = self._capacites(t, generique=False)
+            if reponse:
+                return reponse, None
 
         # --- Savoir sourcé (principes « shoulders of giants ») ------------------
         decision = re.search(DECISION, t)
@@ -732,15 +781,25 @@ class Cerveau:
         else:
             code, numero = "mwb", f"{date.year}{date.month - (date.month + 1) % 2:02d}"
         self.derniere_origine = "bible"
+        ouvrir = bool(re.search(r"\b(ouvre|montre|affiche)\b", t))
+
+        def lire_ou_ouvrir(chemin):
+            if code == "mwb" and not ouvrir:  # le programme de la semaine, lu à voix haute
+                r = publications.programme_semaine(chemin, date)
+                if r:
+                    return f"Programme de la semaine du {r[0]}. " + ". ".join(r[1]) + "."
+            self.actions.ouvrir_lien(chemin.as_uri())
+            return "Je t'ouvre " + ("le cahier Vie et ministère." if code == "mwb" else "La Tour de Garde d'étude.")
+        nom = f"{code}_F_{numero}.epub"
+        for dossier in self._dossiers_publications():  # déjà téléchargé : rien à demander au site
+            if (dossier / nom).exists():
+                return lire_ou_ouvrir(dossier / nom), None
         pub = publications.chercher(code, numero)
         if not pub:
             self.actions.ouvrir_lien(lien)
             return "Je ne trouve pas encore la publication de cette semaine : je t'affiche la page.", None
-        for dossier in self._dossiers_publications():
-            if (dossier / pub["nom"]).exists():
-                self.actions.ouvrir_lien((dossier / pub["nom"]).as_uri())
-                return f"Je t'ouvre « {pub['titre']} ».", None
-        return self._proposer_publications([pub])
+        return self._proposer_publications([pub], ouvrir=False, puis=lambda: lire_ou_ouvrir(
+            next(d / pub["nom"] for d in self._dossiers_publications() if (d / pub["nom"]).exists())))
 
     def _dossiers_publications(self):
         return [Path(os.path.expanduser(c)) for c in dossiers.liste(self.cfg).values()]
@@ -775,6 +834,92 @@ class Cerveau:
         self.en_attente = telecharger_puis_lire
         return (f"Je n'ai pas encore « {pub['titre']} » dans tes documents. Je le télécharge "
                 f"({espace.mo(pub['octets'])}) pour te le lire ?"), None
+
+    def _ordinateur(self, t):
+        """Questions sur l'ordinateur local, sans rien modifier ; None si la phrase n'en est pas une."""
+        if self.derniers_fichiers and (m := re.search(r"\bouvre (?:le |la )?(premier|1|deuxieme|second|2|"
+                                                     r"troisieme|3)\b", t)):
+            rang = {"premier": 0, "1": 0, "deuxieme": 1, "second": 1, "2": 1, "troisieme": 2, "3": 2}[m.group(1)]
+            if rang < len(self.derniers_fichiers):
+                chemin = self.derniers_fichiers[rang]
+                self.actions.ouvrir_lien((chemin if chemin.is_dir() else chemin.parent).as_uri())
+                return f"Je t'ouvre le dossier où se trouve {chemin.name}." if not chemin.is_dir() \
+                    else f"Je t'ouvre le dossier {chemin.name}.", None
+        m = re.search(r"\b(?:cherche|trouve|ou est|ou sont|ou se trouve)\b.*?\b(fichiers?|documents?|dossiers?|"
+                      r"repertoires?)\b\s+(?:qui s appelle |nomme |appele |de |du |des |sur )?(.+)$", t)
+        if m:
+            dossier = m.group(1).startswith(("dossier", "repertoire"))
+            self.derniers_fichiers = systeme.chercher(m.group(2), dossiers=dossier)
+            return systeme.decrire(self.derniers_fichiers, dossier), None
+        if re.search(r"\b(espace|place)\b.*\b(libre|disque|disponible|reste|restante)\b|"
+                     r"\b(reste|libre|disponible)\b.*\b(place|espace)\b", t):
+            return systeme.espace_libre(), None
+        if re.search(r"\b(quels?|combien de|liste)\b.*\b(disques?|lecteurs?|partitions?|volumes?)\b", t):
+            return systeme.liste_disques(), None
+        if re.search(r"\b(ta version|quelle version|version (?:de|du|d) )", t):
+            return systeme.versions(), None
+        if re.search(r"\b(infos?|informations?|caracteristiques)\b.*\b(systeme|ordinateur|ordi|pc|mac|poste|"
+                     r"machine)\b|\bquel (?:systeme|processeur)\b|\bcombien de (?:memoire|ram)\b", t):
+            return systeme.infos(), None
+        return None
+
+    def _geants(self, sujet):
+        """Propose la recherche (internet, avec accord), puis dit la synthèse et ouvre la fiche PDF."""
+        from . import document, geants
+
+        def chercher():
+            r = geants.rechercher(sujet, self.conversation, self.signaler)
+            self.derniere_origine = "geants"
+            if r["lignee"] or r["wikipedia"]:
+                try:
+                    chemin = document.generer(geants.fiche(r), True, dossiers.chemin(self.cfg))
+                    self.actions.ouvrir_lien(chemin.as_uri())
+                except OSError:
+                    pass
+            self.signaler("")
+            return geants.a_dire(r)
+        if self._libre("geants"):
+            return None, chercher
+        self.en_attente = chercher
+        return (f"Je vais chercher comment d'autres ont déjà résolu « {sujet} », dans des sources ouvertes en "
+                "ligne : Wikipédia et le catalogue scientifique OpenAlex. J'y vais ?"), None
+
+    def _exporter(self, format_, cle=None):
+        """Enregistre la dernière réponse dans le format demandé, puis l'ouvre."""
+        r = self.derniere_reponse
+        if not r:
+            return "Pose-moi d'abord une question : j'en ferai ensuite un document.", None
+        noms = {"docx": "le document Word", "md": "le fichier Markdown", "html": "la page web", "pdf": "le PDF"}
+
+        def creer():
+            titre = re.sub(r"[?!.]+$", "", r["question"]).strip()
+            doc = {"titre": titre[:1].upper() + titre[1:], **r}
+            try:
+                chemin = export.generer(doc, format_, dossiers.chemin(self.cfg, cle))
+            except OSError as e:
+                return f"Je n'arrive pas à enregistrer le document : {e}."
+            self.actions.ouvrir_lien(chemin.as_uri())
+            self.export_en_cours = True
+            return f"Voilà {noms[format_]}, {'enregistrée' if format_ == 'html' else 'enregistré'} dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
+        return None, creer
+
+    def _capacites(self, t, generique=True):
+        """Fiche de capacité la plus proche de la question (2 ou 3 phrases), ou un résumé très court."""
+        mots = [m for m in t.split() if len(m) > 3]
+
+        def proche(m, cles):  # « interromps » ~ « interrompre », « fichiers » ~ « fichier »
+            return any(m[:5] == k[:5] for k in cles if len(k) > 3)
+        notes = [(sum(proche(m, (c["motscles"] + " " + normaliser(c["titre"])).split()) for m in mots), c)
+                 for c in CAPACITES]
+        score, meilleure = max(notes, key=lambda n: n[0])
+        if score and not re.search(r"\b(que|quoi|qu est ce que) (tu sais|sais tu|tu peux|peux tu)\b.*\bfaire\b"
+                                   r"|\btes (fonctions|capacites)\b|\btu sais faire quoi\b", t):
+            return meilleure["contenu"]
+        if not generique:
+            return None
+        return ("Je t'écoute et je te réponds, je reconnais la famille, je gère la musique, la météo, les comptes "
+                "à rebours, les fiches PDF, la Bible et tes publications, et je renseigne sur ton ordinateur. "
+                "Demande-moi par exemple : « comment lancer un compte à rebours ? ».")
 
     def _lancer_minuteur(self, secondes, locuteur):
         remplace = " Il remplace le précédent." if self.minuteur else ""

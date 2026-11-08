@@ -358,6 +358,7 @@ def programme_semaine(epub, date):
     """Programme de la réunion de semaine (cahier Vie et ministère téléchargé) pour la semaine de `date` :
     (titre de la semaine, [parties « titre, durée »]) ou None. Lu pour l'utilisateur seul, chez lui."""
     import zipfile
+    from .texte import normaliser
     lundi = date - datetime.timedelta(days=date.weekday())
     mois = MOIS_ACCENTS[lundi.month - 1]
     debut = rf"^{lundi.day}(?:er)?(?: {mois}(?: \d{{4}})?)?\s*[-–]"
@@ -372,12 +373,20 @@ def programme_semaine(epub, date):
             notes = re.search(r"<aside|<footer|epub:type=\"footnote\"", page)
             page = page[:notes.start()] if notes else page
             parties = []
-            for titre, suite in re.findall(r"<h[1-6][^>]*>(.*?)</h[1-6]>(.{0,300})", page, re.S):
-                titre = _nettoyer(titre)
+            for titre, suite in re.findall(r"<h[1-6][^>]*>(.*?)</h[1-6]>(?=(.{0,300}))", page, re.S):
+                # le passage de la semaine est un lien (« LAMENTATIONS 1-2 ») : on garde son texte
+                titre = _nettoyer(re.sub(r'<a epub:type="noteref"[^>]*>([^<*][^<]*)</a>', r"\1", titre))
                 duree = re.search(r"\((\d+) min\)", titre + _nettoyer(suite))
-                titre = re.sub(r"\s*\(\d+ min\)", "", titre).replace(" | ", ", ")
-                if titre and not titre.isupper() or re.match(r"^[A-ZÉÈ]", titre):
-                    parties.append(titre[:1] + titre[1:].lower() if titre.isupper() else titre
-                                   + (f", {duree.group(1)} minutes" if duree and duree.group(1) not in titre else ""))
-            return _nettoyer(m.group(1)), parties[1:]  # la 1re « partie » est le titre de la semaine
+                if re.fullmatch(r"(?:\d )?[A-ZÉÈÏ ]+ \d+(?:-\d+)?", titre):
+                    titre = "Lecture de la semaine : " + titre.title().replace("-", " à ")
+                titre = re.sub(r"\s*\(\d+ min\)", "", titre).replace(" | ", ", ").strip()
+                if not titre:
+                    continue
+                if titre.upper() == titre:  # rubriques en capitales : « JOYAUX DE LA PAROLE DE DIEU »
+                    titre = re.sub(r"\b(dieu|jéhovah|bible)\b", lambda m: m[1].capitalize(),
+                                   titre[:1] + titre[1:].lower())
+                minutes = int(duree.group(1)) if duree else 0
+                parties.append(titre + (f", {minutes} minute{'s' if minutes > 1 else ''}" if minutes else ""))
+            semaine = _nettoyer(m.group(1))
+            return semaine, [x for x in parties if normaliser(x) != normaliser(semaine)]
     return None
