@@ -19,3 +19,4 @@ voix_neuronales/
 conversation/
 sources_privees/
 orion-erreurs.log
+orion/data/hauteurs_voix.json
