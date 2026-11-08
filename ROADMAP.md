@@ -87,11 +87,23 @@ sans raison, source citée.
     volume) et touches multimédia du clavier, qui ne passent pas par le micro ;
   - baisser automatiquement le volume de la musique pendant qu'Orion parle, puis le rétablir.
 
+### Fenêtres
+- **Une fenêtre maîtresse** : l'hologramme pilote les autres fenêtres d'Orion. Aujourd'hui, chaque double-clic
+  lance un nouveau panneau (programme séparé), et les fenêtres secondaires (comparer les voix, mémoire)
+  peuvent se multiplier. À faire :
+  - un seul panneau à la fois (instance unique : un second double-clic ramène le panneau ouvert au premier plan) ;
+  - les fenêtres secondaires rattachées au panneau (une seule de chaque sorte, fermées avec lui) ;
+  - quitter l'hologramme ferme tout ; position des fenêtres retenue d'une fois sur l'autre.
+
 ### Distribution
-- **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée.
+- **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée ;
+  icône macOS (.icns) et Linux (.desktop) à partir du nouveau logo.
 
 ## Fait récemment
 
+- Logo d'Orion : version plate (SVG, PNG, ICO) tirée de l'image d'origine, fond transparent, dessins
+  éclaircis en cyan ; vue artistique pour le README et l'écran de chargement ; icône des fenêtres et de
+  l'installateur Windows, logo dans les PDF.
 - Comptes à rebours nommés, jusqu'à trois à la fois, chacun avec sa couleur (anneaux concentriques) et sa note (bip de départ et bips de fin à la même hauteur) ;
   annonce de fin par leur nom ; demandes plus tolérantes (« compte 5 minutes », « décompte 30 s »,
   « préviens-moi dans un quart d'heure »).

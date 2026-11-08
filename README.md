@@ -1,5 +1,7 @@
 # Orion — assistant vocal familial, léger et hors ligne
 
+![Orion, assistant vocal local](docs/visuels/orion-artistique.png)
+
 Orion parle et écoute en français, sur l'ordinateur, sans envoyer vos paroles en ligne. Il reconnaît chaque membre de la famille à sa voix, retient ce qu'on lui demande, pilote la musique, donne la météo, lance des comptes à rebours, rédige des documents et répond aux questions **en citant ses sources**. Un visage holographique animé montre ce qu'il fait.
 
 Projet ludique et public, inspiré de [jarvis-assistant](https://github.com/jaouadinoham2/jarvis-assistant). Ce qui est prévu ensuite : [`ROADMAP.md`](ROADMAP.md).
