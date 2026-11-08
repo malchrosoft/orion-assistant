@@ -583,38 +583,101 @@ class Panneau:
                 self.liste_voix.itemconfigure("end", foreground=couleur)
 
     def _comparer_voix(self):
-        """Valeurs enregistrées de chaque voix et ressemblances deux à deux, pour repérer les confusions."""
-        from .voix import Profils
+        """Tableau des voix : traits et ressemblances. Ce qui rapproche deux voix au point de les confondre
+        clignote en rouge gras ; ce qui les distingue est en vert. Une explication suit, paire par paire."""
+        from .voix import TOLERANCES, Profils
         seuil = self.cfg["seuil_locuteur"]
         donnees = Profils(seuil).comparaison()
+        noms = list(donnees)
+        traits = [("f0", "Hauteur", "Hz"), ("f1", "F1", "Hz"), ("f2", "F2", "Hz"), ("f3", "F3", "Hz"),
+                  ("centre", "Timbre", "Hz"), ("debit", "Débit", "mots/s")]
+        rouge, orange, vert = "#ff4d4d", "#ffb13c", "#4dff88"
+        # paires confondues (ressemblance des empreintes au-dessus du seuil)
+        paires = sorted({tuple(sorted((a, b))) for a in noms for b in noms
+                         if a != b and donnees[a]["proches"][b] >= seuil})
+        partenaires = {n: [b if a == n else a for a, b in paires if n in (a, b)] for n in noms}
+
+        def proche(n, cle):  # ce trait est-il proche de celui d'une voix avec laquelle n est confondue ?
+            v = donnees[n]["traits"].get(cle)
+            return v is not None and any(abs(v - donnees[p]["traits"].get(cle, 1e9)) < TOLERANCES[cle]
+                                         for p in partenaires[n])
+
         f = tk.Toplevel(self.root)
         f.title("Comparer les voix")
-        f.configure(bg=self.root.cget("bg"))
-        noms = list(donnees)
-        arbre = ttk.Treeview(f, columns=["empreintes", "hauteur"] + noms, height=max(3, len(noms)))
-        arbre.heading("#0", text="Personne")
-        arbre.heading("empreintes", text="Empreintes")
-        arbre.heading("hauteur", text="Hauteur moy.")
-        arbre.column("#0", width=120)
-        arbre.column("empreintes", width=90, anchor="center")
-        arbre.column("hauteur", width=100, anchor="center")
-        for n in noms:
-            arbre.heading(n, text=n)
-            arbre.column(n, width=90, anchor="center")
-        arbre.tag_configure("confusion", foreground="#ff8a5c")
-        for n, d in donnees.items():
-            valeurs = [d["empreintes"], f"{d['hauteur']:.0f} Hz" if d["hauteur"] else "à mesurer"]
-            valeurs += ["—" if a == n else f"{d['proches'][a]:.2f}" for a in noms]
-            confusion = any(v >= seuil for v in d["proches"].values())
-            arbre.insert("", "end", text=("⚠ " if confusion else "") + n, values=valeurs,
-                         tags=("confusion",) if confusion else ())
-        arbre.pack(fill="both", expand=True, padx=8, pady=8)
-        ttk.Label(f, foreground=DISCRET, wraplength=640, justify="left", text=(
-            f"Ressemblance entre deux voix (0 à 1) ; au-dessus du seuil ({seuil:.2f}), Orion peut les confondre (⚠). "
-            "Pour les départager : réenregistrez ces voix au calme, à la même distance du micro ; quand Orion "
-            "hésite, il demande « tu es X ou Y ? » ; s'il se trompe, dites « tu te trompes, c'est … ». "
-            "La hauteur moyenne de la voix, mesurée au fil des phrases, l'aide aussi à les distinguer.")
-        ).pack(anchor="w", padx=8, pady=(0, 8))
+        f.configure(bg=FOND)
+        grille = tk.Frame(f, bg=FOND)
+        grille.pack(padx=10, pady=10)
+        clignotants = []
+
+        def case(ligne, col, texte, couleur=TEXTE, gras=False, clignote=False):
+            l = tk.Label(grille, text=texte, bg=SURFACE, fg=couleur, padx=8, pady=4,
+                         font=("Helvetica", 11, "bold" if gras else "normal"))
+            l.grid(row=ligne, column=col, sticky="nsew", padx=1, pady=1)
+            if clignote:
+                clignotants.append(l)
+        entetes = ["Personne", "Empreintes"] + [t for _, t, _ in traits] + noms
+        for c, t in enumerate(entetes):
+            case(0, c, t, ACCENT, gras=True)
+        for r, n in enumerate(noms, 1):
+            d = donnees[n]
+            case(r, 0, ("⚠ " if partenaires[n] else "") + n, rouge if partenaires[n] else TEXTE, gras=True)
+            case(r, 1, d["empreintes"], orange if d["empreintes"] < 3 else TEXTE)
+            for c, (cle, _, unite) in enumerate(traits, 2):
+                v = d["traits"].get(cle)
+                if v is None:
+                    case(r, c, "—", DISCRET)
+                elif partenaires[n] and proche(n, cle):
+                    case(r, c, f"{v:g}", rouge, gras=True, clignote=True)   # rapproche : source de confusion
+                elif partenaires[n]:
+                    case(r, c, f"{v:g}", vert, gras=True)                   # distingue : aide à départager
+                else:
+                    case(r, c, f"{v:g}")
+            for c, autre in enumerate(noms, 2 + len(traits)):
+                if autre == n:
+                    case(r, c, "—", DISCRET)
+                    continue
+                v = d["proches"][autre]
+                if v >= seuil:
+                    case(r, c, f"{v:.2f}", rouge, gras=True, clignote=True)
+                elif v >= seuil - 0.05:
+                    case(r, c, f"{v:.2f}", orange)
+                else:
+                    case(r, c, f"{v:.2f}")
+
+        def clignoter(allume=[True]):  # rouge vif ↔ rouge sombre, toutes les 0,5 s
+            if not f.winfo_exists():
+                return
+            allume[0] = not allume[0]
+            for l in clignotants:
+                l.configure(fg=rouge if allume[0] else "#6e1f1f")
+            f.after(500, clignoter)
+        clignoter()
+
+        # explication, paire par paire
+        lignes = []
+        for a, b in paires:
+            ta, tb = donnees[a]["traits"], donnees[b]["traits"]
+            communs = [(t, u, ta[c], tb[c]) for c, t, u in traits if c in ta and c in tb]
+            rapproche = [f"{t} {x:g}/{y:g} {u}" for t, u, x, y in communs
+                         if abs(x - y) < TOLERANCES[next(c for c, tt, _ in traits if tt == t)]]
+            distingue = [f"{t} {x:g}/{y:g} {u}" for t, u, x, y in communs
+                         if abs(x - y) >= TOLERANCES[next(c for c, tt, _ in traits if tt == t)]]
+            texte = f"{a} ↔ {b} : empreintes ressemblantes à {donnees[a]['proches'][b]:.2f} (seuil {seuil:.2f})"
+            if rapproche:
+                texte += " ; aussi proches : " + ", ".join(rapproche)
+            if distingue:
+                texte += " ; ce qui les distingue : " + ", ".join(distingue)
+            if not communs:
+                texte += " ; traits pas encore mesurés pour les deux : parlez-lui quelques phrases chacun"
+            lignes.append(texte + ".")
+        tk.Label(f, bg=FOND, fg=TEXTE, wraplength=760, justify="left", font=("Helvetica", 11),
+                 text="\n".join(lignes) if lignes else "Aucune confusion : toutes les voix sont sous le seuil.").pack(
+            anchor="w", padx=10)
+        tk.Label(f, bg=FOND, fg=DISCRET, wraplength=760, justify="left", text=(
+            "Rouge clignotant : ce qui rapproche deux voix au point de les confondre. Vert : ce qui les distingue. "
+            "Orange : presque au seuil, ou trop peu d'empreintes. Pour départager : réenregistrez ces voix au calme, "
+            "à la même distance du micro ; quand Orion hésite il demande qui parle, et « tu te trompes, c'est … » "
+            "le corrige.")).pack(anchor="w", padx=10, pady=(4, 10))
 
     def _choisir_couleur(self):
         """Couleur de la personne sélectionnée : elle teinte le halo de l'hologramme quand Orion la reconnaît."""

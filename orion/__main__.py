@@ -471,7 +471,7 @@ def boucle_vocale(cfg, holo):
                 continue
             frais = Profils(cfg["seuil_locuteur"])  # voix ajoutées ou retirées depuis le panneau
             profils.data, profils.hauteurs = frais.data, frais.hauteurs
-            hz = oreille.hauteur
+            hz = oreille.traits  # hauteur, formants, timbre, débit de la phrase
             # l'empreinte d'une phrase très courte (« dis-moi Orion », « oui ») est peu fiable : on garde alors
             # la personne reconnue juste avant plutôt que de la déclarer inconnue
             courte = len(texte.split()) < 4
@@ -507,7 +507,8 @@ def boucle_vocale(cfg, holo):
             if locuteur == "invité" and courte and dernier_reconnu and eveille:  # seulement en pleine conversation
                 locuteur = dernier_reconnu
             print(f"[voix : {locuteur} · ressemblance {profils.score:.2f} / seuil {cfg['seuil_locuteur']}"
-                  f"{f' · {hz:.0f} Hz' if hz else ''}{' · phrase courte' if courte else ''}]", flush=True)
+                  f"{' · ' + ' '.join(f'{c} {v:g}' for c, v in hz.items()) if hz else ''}"
+                  f"{' · phrase courte' if courte else ''}]", flush=True)
             if locuteur != "invité" and profils.score >= cfg["seuil_locuteur"] + 0.05 and not courte \
                     and not profils.ambigu:
                 profils.apprendre(locuteur, empreinte, hz)  # reconnu avec assurance : Orion affine sa mémoire de la voix

@@ -9,7 +9,11 @@ import queue
 from .config import DONNEES, UTILISATEUR
 
 PROFILS = DONNEES / "profils_voix.json"
-HAUTEURS = DONNEES / "hauteurs_voix.json"  # hauteur moyenne de la voix (Hz) de chaque phrase, par personne
+HAUTEURS = DONNEES / "hauteurs_voix.json"  # traits mesurés de chaque phrase (hauteur, formants…), par personne
+# Traits de la voix, en plus de l'empreinte de Vosk, avec l'écart en deçà duquel deux valeurs se valent :
+# hauteur (f0), formants (f1-f3, liés à la longueur du conduit vocal : enfant / adulte), brillance du timbre
+# (centre de gravité du spectre) et débit (mots par seconde).
+TOLERANCES = {"f0": 15, "f1": 60, "f2": 120, "f3": 150, "centre": 200, "debit": 0.5}
 
 
 def hauteur(echantillons, taux=16000):
@@ -35,6 +39,56 @@ def hauteur(echantillons, taux=16000):
         if ac[retard] > 0.35 * ac[0]:  # passage vraiment voisé
             valeurs.append(taux / retard)
     return float(np.median(valeurs)) if len(valeurs) >= 5 else None
+
+
+def _formants(trame, taux, ordre=14):
+    """Trois premiers formants (Hz) d'une trame voisée, par prédiction linéaire (LPC, Levinson-Durbin)."""
+    import numpy as np
+    x = np.append(trame[0], trame[1:] - 0.97 * trame[:-1]) * np.hamming(len(trame))  # préaccentuation
+    r = np.correlate(x, x, "full")[len(x) - 1:len(x) + ordre]
+    if r[0] <= 0:
+        return None
+    a, e = np.array([1.0]), r[0]
+    for i in range(1, ordre + 1):  # Levinson-Durbin
+        k = -(r[i] + np.dot(a[1:], r[i - 1:0:-1])) / e
+        a = np.append(a, 0) + k * np.append(0, a[::-1])
+        e *= 1 - k * k
+    racines = [z for z in np.roots(a) if z.imag > 0]
+    freqs = sorted(np.angle(z) * taux / (2 * np.pi) for z in racines
+                   if -taux / np.pi * np.log(abs(z)) < 400)  # largeur de bande < 400 Hz : vrai formant
+    freqs = [f for f in freqs if 150 < f < 4500]
+    return freqs[:3] if len(freqs) >= 3 else None
+
+
+def traits(echantillons, mots=(), taux=16000):
+    """Traits de la voix d'une phrase : {f0, f1, f2, f3, centre, debit} (ceux qui ont pu être mesurés)."""
+    try:
+        import numpy as np
+    except ImportError:
+        return {}
+    resultat = {}
+    f0 = hauteur(echantillons, taux)
+    if f0:
+        resultat["f0"] = round(f0, 1)
+    x = np.frombuffer(bytes(echantillons), dtype=np.int16).astype(np.float64)
+    trame, pas = int(0.03 * taux), int(0.015 * taux)
+    if len(x) > trame * 10:
+        energie = np.array([np.sqrt(np.mean(x[d:d + trame] ** 2)) for d in range(0, len(x) - trame, pas)])
+        fortes = [i for i, v in enumerate(energie) if v > 0.5 * np.max(energie)]  # cœur des voyelles
+        formants = [f for i in fortes[::2] if (f := _formants(x[i * pas:i * pas + trame], taux))]
+        if len(formants) >= 5:
+            for k, cle in enumerate(("f1", "f2", "f3")):
+                resultat[cle] = round(float(np.median([f[k] for f in formants])), 1)
+        spectre = np.abs(np.fft.rfft(x[: (len(x) // trame) * trame].reshape(-1, trame) * np.hanning(trame), axis=1))
+        frequences = np.fft.rfftfreq(trame, 1 / taux)
+        poids = spectre[[i for i in fortes if i < len(spectre)]]
+        if len(poids):
+            resultat["centre"] = round(float(np.sum(poids * frequences) / (np.sum(poids) + 1e-9)), 1)
+    if len(mots) >= 3:
+        duree = mots[-1].get("end", 0) - mots[0].get("start", 0)
+        if duree > 0.5:
+            resultat["debit"] = round(len(mots) / duree, 2)
+    return resultat
 
 
 def _cosinus(a, b):
@@ -64,19 +118,34 @@ class Profils:
         notes = []
         for n in self.data:
             score = max(_cosinus(vecteur, e) for e in self._empreintes(n))
-            moy, ecart = self.hauteur_de(n)
-            if hz and moy:
-                score -= 0.12 * min(1.0, abs(hz - moy) / (2 * ecart + 15))
+            score -= self.ecart_traits(n, hz)
             notes.append((n, score))
         return sorted(notes, key=lambda x: -x[1])
 
+    def traits_de(self, nom):
+        """{trait: (moyenne, écart type)} des traits connus de la personne (3 mesures au moins par trait)."""
+        mesures = [m if isinstance(m, dict) else {"f0": m} for m in self.hauteurs.get(nom, [])]  # ancien format
+        resultat = {}
+        for cle in TOLERANCES:
+            v = [m[cle] for m in mesures if cle in m]
+            if len(v) >= 3:
+                moy = sum(v) / len(v)
+                resultat[cle] = (moy, math.sqrt(sum((x - moy) ** 2 for x in v) / len(v)))
+        return resultat
+
     def hauteur_de(self, nom):
-        """(moyenne, écart type) des hauteurs de voix connues de la personne, ou (None, None)."""
-        h = self.hauteurs.get(nom, [])
-        if len(h) < 3:
-            return None, None
-        moy = sum(h) / len(h)
-        return moy, math.sqrt(sum((v - moy) ** 2 for v in h) / len(h))
+        return self.traits_de(nom).get("f0", (None, None))
+
+    def ecart_traits(self, nom, mesure):
+        """Pénalité (0 à 0,15) quand les traits de la phrase s'éloignent de ceux de la personne : chaque trait
+        compte selon son écart, ramené à la variation habituelle de la personne et à une tolérance."""
+        if not mesure:
+            return 0.0
+        mesure = mesure if isinstance(mesure, dict) else {"f0": mesure}
+        connus = self.traits_de(nom)
+        ecarts = [min(1.0, abs(mesure[c] - moy) / (2 * ecart + TOLERANCES[c]))
+                  for c, (moy, ecart) in connus.items() if c in mesure]
+        return 0.15 * sum(ecarts) / len(ecarts) if ecarts else 0.0
 
     def identifier(self, vecteur, hz=None):
         self.score, self.ambigu = 0.0, None
@@ -98,7 +167,9 @@ class Profils:
                 if autre != n:
                     proches[autre] = max(_cosinus(a, b) for a in self._empreintes(n) for b in self._empreintes(autre))
             moy, _ = self.hauteur_de(n)
-            resultat[n] = {"empreintes": len(self._empreintes(n)), "hauteur": moy, "proches": proches}
+            resultat[n] = {"empreintes": len(self._empreintes(n)), "hauteur": moy, "proches": proches,
+                           "traits": {c: round(m) if c != "debit" else round(m, 1)
+                                      for c, (m, _) in self.traits_de(n).items()}}
         return resultat
 
     def enregistrer(self, nom, vecteurs):
@@ -113,8 +184,8 @@ class Profils:
             if len(empreintes) > self.MAX:
                 del empreintes[5]
             self.data[nom] = empreintes
-        if hz:
-            self.hauteurs[nom] = (self.hauteurs.get(nom, []) + [round(hz, 1)])[-self.MAX:]
+        if hz:  # traits de la phrase (dictionnaire), ou une hauteur seule
+            self.hauteurs[nom] = (self.hauteurs.get(nom, []) + [hz if isinstance(hz, dict) else round(hz, 1)])[-self.MAX:]
         self._sauver()
 
     def _sauver(self):
@@ -134,6 +205,7 @@ class Oreille:
         self.confiance = 1.0
         self.niveau = 0.0
         self.hauteur = None        # hauteur de voix (Hz) de la dernière phrase complète
+        self.traits = {}           # traits de la voix de la dernière phrase complète (voir traits())
         self._phrase = bytearray()  # audio de la phrase en cours
         spk = UTILISATEUR / cfg["modele_locuteur"]
         self._spk = SpkModel(str(spk)) if spk.exists() else None
@@ -177,7 +249,8 @@ class Oreille:
             r = json.loads(self.reco.Result())
             mots = r.get("result", [])
             self.confiance = sum(m.get("conf", 1) for m in mots) / len(mots) if mots else 0.0
-            self.hauteur = hauteur(self._phrase[-16000 * 2 * 12:]) if r.get("text") else None  # 12 s au plus
+            self.traits = traits(self._phrase[-16000 * 2 * 12:], mots) if r.get("text") else {}  # 12 s au plus
+            self.hauteur = self.traits.get("f0")
             self._phrase.clear()
             return r.get("text", ""), True, r.get("spk")
         return json.loads(self.reco.PartialResult()).get("partial", ""), False, None
