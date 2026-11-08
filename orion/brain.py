@@ -8,9 +8,9 @@ import math
 import operator
 import random
 import re
-import urllib.request
 
 from . import bible, dossiers, espace, knowledge, personnes, web
+from .conversation import Conversation
 from .persona import presentation
 from .texte import normaliser, sans_accents
 
@@ -27,6 +27,11 @@ NOMBRES = {"zero": 0, "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "ci
 OPERATEURS = [("multiplie par", "*"), ("divise par", "/"), ("puissance", "**"), ("au carre", "**2"),
               ("au cube", "**3"), ("racine carree de", "sqrt "), ("racine de", "sqrt "),
               ("plus", "+"), ("moins", "-"), ("fois", "*"), ("sur", "/"), ("x", "*")]
+
+# Questions qui appellent un fait vérifiable : on cherche une source avant de laisser un modèle répondre
+FACTUELLE = (r"\b(c est quoi|qu est ce que|qu est ce qu|qui est|qui etait|qui a (invente|ecrit|decouvert|cree)|"
+             r"quand (a|est|etait|ont)|en quelle annee|combien (de|d|y a)|ou se trouve|definition|explique|"
+             r"comment fonctionne|pourquoi (le|la|les|l)|quelle est la (capitale|population|distance|hauteur))\b")
 
 OUI = r"^(oui|ouais|ok|d accord|vas y|va s y|bien sur|volontiers|je veux bien|oui merci|si)\b"
 NON = r"^(non|pas la peine|laisse tomber|non merci|annule)\b"
@@ -79,6 +84,9 @@ class Cerveau:
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.question_tutoiement = None   # nom de la personne à qui l'on vient de demander « on se tutoie ? »
         self.oubli_a_confirmer = None     # (nom, mots ou None pour « tout ») en attente d'un « oui »
+        self.demande_enrolement = None    # prénom dont la boucle vocale doit enregistrer la voix
+        self.conversation = Conversation(cfg)
+        self.retrait_voix = None          # prénom dont on attend la confirmation de retrait de la voix
         self.tutoiement_demande = set()   # une seule fois par session et par personne
         self.signaler_inconnu = False     # mode vocal : prévenir quand une voix n'est pas reconnue
         self.inconnu_signale = False
@@ -89,6 +97,19 @@ class Cerveau:
         Ajoute à la réponse brute la relation avec la personne : tutoiement, mémoire locale, voix inconnue."""
         connu = locuteur != "invité"
         t = normaliser(phrase)
+
+        # Confirmation du retrait d'une voix
+        if self.retrait_voix:
+            nom, self.retrait_voix = self.retrait_voix, None
+            if re.search(OUI, t):
+                from .voix import PROFILS
+                import json
+                profils = json.loads(PROFILS.read_text()) if PROFILS.exists() else {}
+                profils.pop(nom, None)
+                PROFILS.write_text(json.dumps(profils))
+                return f"C'est fait, {nom} : je ne reconnaîtrai plus ta voix.", None
+            if re.search(NON, t):
+                return "D'accord, je garde ta voix.", None
 
         # Confirmation d'un oubli demandé juste avant
         if self.oubli_a_confirmer:
@@ -111,6 +132,42 @@ class Cerveau:
             personnes.modifier(nom, tutoiement=tutoie)
             return ("Super, on se tutoie !" if tutoie else "Entendu, je vous vouvoierai."), None
         self.question_tutoiement = None
+
+        # --- Installer ce qui manque (voix naturelle, conversation) -------------------
+        if re.search(r"\bce qu(i| il) te manque\b", t) or (re.search(r"\b(installe|telecharge|ajoute)s?\b", t) and re.search(
+                r"\b(voix naturelle|ta voix|conversation|discuter|modele|tout)\b", t)):
+            return self._installer_manquants(locuteur), None
+
+        # --- Voix de la famille, à l'oral ---------------------------------------
+        m = re.search(r"\b(?:memorise|enregistre|retiens|apprends) (?:ma|mon) voix\b(?:.*?\b(?:je suis|je m appelle|c est) (\w+))?", t)
+        if m:
+            prenom = (m.group(1) or "").capitalize() or (locuteur if connu else None)
+            if not prenom:
+                self.en_attente = None
+                return "D'accord ! Dis-moi d'abord ton prénom : « mémorise ma voix, je suis… ».", None
+            self.demande_enrolement = prenom
+            return (f"D'accord {prenom}. Lis-moi cinq phrases à voix haute, l'une après l'autre, comme tu veux. "
+                    "Je te dirai quand c'est fini."), None
+        if re.search(r"\b(retire|supprime|efface|oublie) (ma|mon) (voix|empreinte)\b", t):
+            if not connu:
+                return "Je ne reconnais pas ta voix : il n'y a rien à retirer.", None
+            self.retrait_voix = locuteur
+            return f"Tu veux vraiment que j'oublie ta voix, {locuteur} ? Je ne te reconnaîtrais plus. Dis oui pour confirmer.", None
+        m = re.search(r"^(?:je suis|je m appelle|moi c est|c est) (\w+)$", t)
+        if m and m.group(1) not in ("la", "le", "ici", "moi", "toi", "pas", "content", "contente", "triste",
+                                    "fatigue", "fatiguee", "malade", "en"):
+            prenom = m.group(1).capitalize()
+            if connu and normaliser(locuteur) == normaliser(prenom):
+                return f"Oui, je t'ai reconnu à ta voix, {prenom} !", None
+
+            def enroler():
+                self.demande_enrolement = prenom
+                return f"Lis-moi cinq phrases à voix haute, {prenom}, l'une après l'autre."
+            self.en_attente = enroler
+            if connu:
+                return (f"Pourtant, je croyais entendre {locuteur}. Tu veux que j'enregistre ta voix sous le nom "
+                        f"{prenom} ?"), None
+            return f"Enchanté, {prenom} ! Tu veux que j'enregistre ta voix pour te reconnaître ensuite ?", None
 
         if re.search(r"\b(vouvoie moi|vouvoyez moi|on se vouvoie|ne me tutoie pas|vouvoyons nous)\b", t):
             if not connu:
@@ -220,6 +277,31 @@ class Cerveau:
         self.en_attente = depuis_wikipedia
         return "Je n'ai pas ce sujet dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
 
+    def _installer_manquants(self, locuteur):
+        """À la voix : annonce la taille et demande l'accord ; la limite d'espace ne se change pas à l'oral."""
+        from . import composants
+        liste = composants.manquants(self.cfg)
+        if not liste:
+            return "J'ai déjà tout ce qu'il me faut."
+        try:
+            total = sum(o for _, o in composants.estimer(liste))
+        except Exception:
+            return "Je n'arrive pas à vérifier ce qu'il faut télécharger. Vérifie la connexion internet."
+        quoi = " et ".join(composants.LIBELLES[g] for g, _ in liste)
+        if espace.occupe() + total > espace.limite(self.cfg):
+            return (f"Pour installer {quoi}, il me faut {espace.mo(total)}, plus que ma limite de "
+                    f"{espace.mo(espace.limite(self.cfg))}. Cette limite se change dans le panneau : il y a un "
+                    "bouton « Installer ce qui manque ».")
+
+        def installer():
+            try:
+                composants.installer(self.cfg, liste)
+            except Exception as e:
+                return f"L'installation n'a pas abouti : {e}"
+            return "C'est installé ! Relance-moi pour profiter de ma nouvelle voix et de la conversation."
+        self.en_attente = installer
+        return f"Je peux installer {quoi} : cela fait {espace.mo(total)} à télécharger. Je m'en occupe ?"
+
     def _adapter(self, texte, locuteur):
         if locuteur != "invité" and personnes.fiche(locuteur).get("tutoiement") is False:
             return personnes.vouvoyer(texte)
@@ -292,11 +374,13 @@ class Cerveau:
         if re.search(r"\b(qui suis je|tu me reconnais|qui parle)\b", t):
             return (f"Tu es{prenom}." if prenom else "Je ne reconnais pas ta voix. "
                     "Tu peux l'enregistrer avec la commande enroler."), None
-        if re.search(r"\b(qui es tu|comment tu t appelles|ton nom)\b", t):
+        if re.search(r"\b(je vais (me coucher|dormir)|bonne nuit|a demain|je vais au lit)\b", t):
+            return random.choice([f"Bonne nuit{prenom}, dors bien !", f"Bonne nuit{prenom}. À demain !"]), None
+        if re.search(r"\b(qui es tu|comment tu t appelles|ton nom|presente toi|presentez vous|tu es qui)\b", t):
             return presentation(self.cfg), None
         if re.search(r"\b(merci)\b", t):
             return random.choice(["Avec plaisir.", "De rien !", "À ton service."]), None
-        if re.search(r"\b(au revoir|bonne nuit|a plus)\b", t):
+        if re.search(r"\b(au revoir|a plus)\b", t):
             return f"À bientôt{prenom}.", None
 
         # --- Musique --------------------------------------------------------
@@ -322,7 +406,7 @@ class Cerveau:
             return None, lambda: a.musique("pause")
 
         # --- Volume / applis --------------------------------------------------
-        if re.search(r"\b(volume|son)\b", t):
+        if re.search(r"\bvolume\b", t) or re.search(r"\b(monte|baisse|augmente|diminue|coupe|remets)\w* (le |du )?son\b", t):
             if re.search(r"\b(coupe|muet)\b", t):
                 return None, lambda: a.volume("muet")
             sens = "moins" if re.search(r"\b(baisse|moins|diminue)\b", t) else "plus"
@@ -369,10 +453,6 @@ class Cerveau:
         if fiche:
             self.derniere_origine = "locale"
             return self._reponse_sourcee(fiche, decision), None
-        if self.cfg["llm"]["actif"]:
-            r = self._llm(phrase)
-            if r:
-                return f"{r} Attention, c'est une réponse générée sans source : vérifie-la.", None
         if decision:
             return "Je n'ai pas de source fiable pour t'aider à décider ça. Demande à quelqu'un du métier.", None
 
@@ -391,8 +471,20 @@ class Cerveau:
                                                 "portee": "fiche"}]}
             return (f"{article['contenu']} Source : Wikipédia, article {article['titre']}. "
                     "C'est une encyclopédie collaborative : vérifie les points importants.")
-        self.en_attente = consulter_wikipedia
-        return "Je n'ai pas ça dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
+        # Question factuelle → d'abord une source (Wikipédia, après accord)
+        if re.search(FACTUELLE, t):
+            self.en_attente = consulter_wikipedia
+            return "Je n'ai pas ça dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
+
+        # --- Discussion libre : modèle local uniquement (rien ne sort de l'ordinateur) ------
+        if self.conversation.local_disponible():
+            r = self.conversation.repondre_local(phrase, locuteur)
+            if r:
+                self.derniere_origine = "conversation_locale"
+                return r, None
+        return random.choice(["Je ne sais pas encore discuter de ça.",
+                              "Je ne sais pas encore répondre à ça. Pour discuter plus librement, on peut m'ajouter "
+                              "un modèle de conversation dans le panneau, onglet Réglages."]), None
 
     SOURCE_BIBLIQUE = ("Pour les questions bibliques, ma base de connaissance externe est le site officiel "
                        "des Témoins de Jéhovah, JW.org, sa Bibliothèque en ligne wol.jw.org, "
@@ -402,6 +494,8 @@ class Cerveau:
         o = self.derniere_origine
         if o == "bible":
             return self.SOURCE_BIBLIQUE
+        if o == "conversation_locale":
+            return "Je te réponds avec mon modèle de conversation local, sans source : ce n'est qu'un avis."
         if o == "wikipedia":
             return f"Cette réponse vient de Wikipédia, article {self.derniere_fiche['titre']}."
         if o == "locale" and self.derniere_fiche:
@@ -457,15 +551,3 @@ class Cerveau:
                      " Vérifie que ta situation correspond bien à ces conditions." + prudence)
         return texte
 
-    def _llm(self, phrase):
-        """Optionnel : petit modèle local via Ollama, si installé (désactivé par défaut)."""
-        c = self.cfg["llm"]
-        corps = json.dumps({"model": c["modele"], "stream": False,
-                            "prompt": f"Tu es {self.cfg['nom']}, un assistant vocal familial. Réponds en français, "
-                                      f"en deux phrases maximum, sans mise en forme.\nQuestion : {phrase}"}).encode()
-        try:
-            req = urllib.request.Request(c["url"], corps, {"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return json.loads(r.read())["response"].strip()
-        except Exception:
-            return None

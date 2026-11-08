@@ -18,6 +18,8 @@ MO = 1_000_000
 
 def mo(octets):
     """Taille lisible : une décimale sous 10 Mo."""
+    if octets >= 1000 * MO:
+        return f"{octets / (1000 * MO):.1f}".replace(".", ",") + " Go"
     texte = f"{octets / MO:.1f}" if octets < 10 * MO else f"{octets / MO:.0f}"
     return texte.replace(".", ",") + " Mo"
 
@@ -37,6 +39,8 @@ def categories():
     return {
         "Modèles vocaux (français)": _taille(UTILISATEUR / "models"),
         "Langues supplémentaires": _taille(UTILISATEUR / "langues"),
+        "Voix naturelles (Piper)": _taille(UTILISATEUR / "voix_neuronales"),
+        "Conversation (moteur et modèle locaux)": _taille(UTILISATEUR / "conversation"),
         "Mémoire (savoir appris, personnes, voix)": memoire,
     }
 

@@ -31,7 +31,17 @@ NIVEAUX = {3: "référence solide", 2: "ouvrage reconnu", 1: "source secondaire"
 # Mots trop fréquents qui polluent la recherche
 VIDES = set("c est quoi qu ce que un une le la les des de du d l a au aux et en sur pour comment "
             "explique moi dis parle peux tu me sais connais definition definis signifie veut dire "
-            "orion s il te plait quel quelle quels quelles".split())
+            "orion s il te plait quel quelle quels quelles je tu il elle on nous vous ils elles me te se "
+            "mon ma mes ton ta tes son sa ses suis es est sommes etes sont vais vas va vont ai as avons avez ont "
+            "fait faire veux peux dois pas ne plus tres bien oui non merci alors donc mais ou car ca cela ceci "
+            "y en lui leur qui quoi dont tout tous toute toutes".split())
+
+
+def _couverture(mots, texte_fiche):
+    """Part des mots de la question présents dans la fiche (préfixe de 5 lettres pour les mots longs)."""
+    jetons = texte_fiche.split()
+    trouves = sum(1 for m in mots if any(j == m or (len(m) >= 5 and j.startswith(m[:5])) for j in jetons))
+    return trouves / len(mots)
 
 
 def _lire(chemin):
@@ -74,11 +84,16 @@ def chercher(question: str):
         return None
     requete = " OR ".join(f'"{m}"*' for m in mots)
     with sqlite3.connect(BASE) as db:
-        ligne = db.execute("SELECT rowid, titre, contenu, domaine FROM fiches WHERE fiches MATCH ? "
-                           "ORDER BY bm25(fiches, 0, 0, 0, 0, 1) LIMIT 1",
-                           (f"recherche : ({requete})",)).fetchone()
-        if not ligne:
+        candidats = db.execute("SELECT rowid, titre, contenu, domaine, recherche FROM fiches WHERE fiches MATCH ? "
+                               "ORDER BY bm25(fiches, 0, 0, 0, 0, 1) LIMIT 8",
+                               (f"recherche : ({requete})",)).fetchall()
+        # Une fiche ne répond que si elle couvre au moins la moitié des mots utiles de la question :
+        # « je vais me coucher » ne doit pas tomber sur le Jeu de la vie parce que « vie » y figure.
+        notes = [(c, _couverture(mots, c[4])) for c in candidats]
+        notes = [(c, n) for c, n in notes if n >= 0.5]
+        if not notes:
             return None
+        ligne = max(notes, key=lambda cn: cn[1])[0]  # max() garde le premier ex aequo : l'ordre bm25
         sources = [dict(zip(("titre", "url", "niveau", "consulte", "portee"), r)) for r in
                    db.execute("SELECT titre, url, niveau, consulte, portee FROM refs WHERE fiche=? "
                               "ORDER BY portee = 'fiche' DESC, niveau DESC", (ligne[0],))]
