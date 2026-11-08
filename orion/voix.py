@@ -5,9 +5,9 @@ import json
 import math
 import queue
 
-from .config import DATA, RACINE
+from .config import DONNEES, UTILISATEUR
 
-PROFILS = DATA / "profils_voix.json"
+PROFILS = DONNEES / "profils_voix.json"
 
 
 def _cosinus(a, b):
@@ -39,18 +39,24 @@ class Oreille:
 
     def __init__(self, cfg):
         import sounddevice as sd
-        from vosk import KaldiRecognizer, Model, SetLogLevel, SpkModel
+        from vosk import SetLogLevel, SpkModel
         SetLogLevel(-1)
         self.file = queue.Queue()
         self.muet = False
-        modele = Model(str(RACINE / cfg["modele_vosk"]))
-        self.reco = KaldiRecognizer(modele, 16000)
-        spk = RACINE / cfg["modele_locuteur"]
-        if spk.exists():
-            self.reco.SetSpkModel(SpkModel(str(spk)))
+        spk = UTILISATEUR / cfg["modele_locuteur"]
+        self._spk = SpkModel(str(spk)) if spk.exists() else None
+        self.charger(cfg.get("chemin_vosk") or UTILISATEUR / cfg["modele_vosk"])
         self.flux = sd.RawInputStream(samplerate=16000, blocksize=4000, dtype="int16", channels=1,
                                       callback=self._recevoir)
         self.flux.start()
+
+    def charger(self, chemin_modele):
+        """(Re)charge le modèle de reconnaissance, par exemple pour changer de langue de discussion."""
+        from vosk import KaldiRecognizer, Model
+        reco = KaldiRecognizer(Model(str(chemin_modele)), 16000)
+        if self._spk:
+            reco.SetSpkModel(self._spk)  # l'empreinte vocale ne dépend pas de la langue
+        self.reco = reco
 
     def _recevoir(self, donnees, *_):
         if not self.muet:

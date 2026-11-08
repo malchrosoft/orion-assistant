@@ -1,13 +1,32 @@
 # SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
 # SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
-"""Configuration : valeurs par défaut surchargées par config.json à la racine."""
+"""Configuration et emplacements.
+
+En développement, tout vit dans le dépôt. Une fois installé (version packagée), le dossier de l'application
+est en lecture seule : les données livrées (DATA) y restent, et tout ce qui s'écrit (réglages, modèles,
+langues, base de savoir, voix de la famille) va dans le dossier de l'utilisateur (UTILISATEUR).
+"""
 import json
+import os
 import sys
 from pathlib import Path
 
-# Version packagée (PyInstaller) : config.json et models/ sont à côté de l'exécutable
-RACINE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DATA = Path(__file__).resolve().parent / "data"
+PACKAGE = getattr(sys, "frozen", False)
+RACINE = Path(__file__).resolve().parent.parent
+DATA = Path(__file__).resolve().parent / "data"  # données livrées, en lecture seule une fois installé
+
+
+def _dossier_utilisateur():
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home())) / "Orion"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Orion"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "orion"
+
+
+UTILISATEUR = _dossier_utilisateur() if PACKAGE else RACINE
+DONNEES = UTILISATEUR / "donnees" if PACKAGE else DATA  # base, fiches apprises, voix de la famille
+DONNEES.mkdir(parents=True, exist_ok=True)
 
 DEFAUT = {
     "nom": "Orion",                      # nom de l'assistant = mot d'éveil
@@ -19,8 +38,10 @@ DEFAUT = {
     "voix_vitesse": 175,
     "langue": "fr",                      # langue de la voix d'Orion (la compréhension reste en français)
     "langue_confirmee": False,           # au premier lancement, Orion demande confirmation à voix haute
-    "voix_id": "",
-    "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin                       # voix choisie dans le panneau ; vide = première voix de la langue
+    "voix_id": "",                       # voix choisie dans le panneau ; vide = première voix de la langue
+    "langue_discussion": "fr",           # langue dans laquelle on parle à Orion (voir onglet Langues)
+    "nom_phonetique": "",                # facultatif : comment prononcer le nom (ex. « Oh-ri-on »)
+    "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin
     "aimp_exe": r"C:\Program Files\AIMP\AIMP.exe",
     "dossier_musique": "",
     "hologramme": {"taille": 360, "toujours_devant": True, "transparent": True},
@@ -30,7 +51,7 @@ DEFAUT = {
 
 def charger():
     cfg = json.loads(json.dumps(DEFAUT))
-    fichier = RACINE / "config.json"
+    fichier = UTILISATEUR / "config.json"
     if fichier.exists():
         for k, v in json.loads(fichier.read_text(encoding="utf-8")).items():
             if isinstance(v, dict) and isinstance(cfg.get(k), dict):
@@ -45,4 +66,4 @@ def charger():
 def sauver(cfg):
     """Écrit dans config.json uniquement ce qui diffère des valeurs par défaut."""
     diff = {k: v for k, v in cfg.items() if v != DEFAUT.get(k)}
-    (RACINE / "config.json").write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")
+    (UTILISATEUR / "config.json").write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")

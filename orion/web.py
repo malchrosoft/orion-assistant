@@ -96,7 +96,7 @@ def verifier_references():
     """Vérifie que chaque référence livrée est bien en ligne et accessible librement
     (principe « consultée, pas mémorisée »). Renvoie la liste (statut, titre, url)."""
     import json
-    refs = json.loads(knowledge.REFERENCES.read_text(encoding="utf-8"))
+    refs = knowledge.references()
     toutes = [s for groupe in ("domaines", "fiches") for lst in refs[groupe].values() for s in lst]
     resultats = []
     for s in toutes:

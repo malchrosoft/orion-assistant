@@ -9,3 +9,7 @@ build/
 dist/
 *.spec
 __pycache__/
+langues/
+Orion-credits.pdf
+fiches/
+orion/data/personnes.json

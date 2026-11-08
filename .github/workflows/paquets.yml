@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
+# Fabrique les installateurs sur les trois OS (Python embarqué : rien à installer sur le poste).
+# Lancement : manuel (onglet Actions), ou en poussant une étiquette vX.Y.Z → publication d'une Release.
+name: Installateurs
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  construire:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest      # Windows 10/11 64 bits
+          - os: macos-14            # Apple Silicon
+          - os: macos-13            # Mac Intel
+          - os: ubuntu-22.04        # glibc 2.35 : compatible avec les distributions de 2022 et plus récentes
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Version
+        shell: bash
+        run: echo "VERSION=$(python -c 'import orion; print(orion.__version__)')" >> "$GITHUB_ENV"
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 espeak-ng
+      - name: Dépendances Python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller -r requirements.txt -r requirements-traduction.txt
+      - name: Application autonome
+        run: python build_exe.py
+      - name: Installateur Windows (.exe)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install innosetup -y --no-progress
+          iscc "//DVersion=$VERSION" packaging/windows/orion.iss
+      - name: Image disque macOS (.dmg)
+        if: runner.os == 'macOS'
+        run: |
+          sh packaging/macos/creer_dmg.sh "$VERSION"
+          mv "dist/Orion-$VERSION.dmg" "dist/Orion-$VERSION-macos-$(uname -m).dmg"
+      - name: Paquets Linux (.deb, .tar.gz)
+        if: runner.os == 'Linux'
+        run: sh packaging/linux/creer_deb.sh "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.deb
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publier:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: construire
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: paquets
+          merge-multiple: true
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" paquets/* --repo "$GITHUB_REPOSITORY" --title "Orion $GITHUB_REF_NAME" --generate-notes

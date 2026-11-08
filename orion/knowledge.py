@@ -12,13 +12,19 @@ import datetime
 import json
 import sqlite3
 
-from .config import DATA
+from .config import DATA, DONNEES
 from .texte import normaliser
 
-BASE = DATA / "savoir.db"
-SOURCE = DATA / "savoir.json"         # savoir livré avec Orion
-REFERENCES = DATA / "references.json"  # références livrées, par domaine et par fiche
-APPRIS = DATA / "appris.json"          # ce que l'utilisateur ajoute (survit aux reconstructions)
+BASE = DONNEES / "savoir.db"
+SOURCE = DATA / "savoir.json"            # savoir livré avec Orion
+REFERENCES_LIVREES = DATA / "references.json"
+REFERENCES = DONNEES / "references.json"  # copie mise à jour par « verifier » (identique en développement)
+APPRIS = DONNEES / "appris.json"          # ce que l'utilisateur ajoute (survit aux reconstructions)
+
+
+def references():
+    """Références vérifiées localement si elles existent, sinon celles livrées avec Orion."""
+    return json.loads((REFERENCES if REFERENCES.exists() else REFERENCES_LIVREES).read_text(encoding="utf-8"))
 
 NIVEAUX = {3: "référence solide", 2: "ouvrage reconnu", 1: "source secondaire", 0: "source internet non vérifiée"}
 
@@ -40,7 +46,7 @@ def construire():
     """(Re)crée la base à partir des fichiers JSON."""
     BASE.unlink(missing_ok=True)
     fiches = toutes_les_fiches()
-    refs = json.loads(REFERENCES.read_text(encoding="utf-8")) if REFERENCES.exists() else {}
+    refs = references()
     with sqlite3.connect(BASE) as db:
         db.execute("CREATE VIRTUAL TABLE fiches USING fts5(domaine, titre, motscles, contenu, recherche, "
                    "tokenize='unicode61 remove_diacritics 2')")

@@ -4,10 +4,11 @@
 
 La voix tourne dans un petit processus séparé : pour faire taire Orion, on le coupe net et on en relance
 un autre. C'est la seule méthode fiable sur tous les OS (pyttsx3 ne sait pas s'interrompre proprement).
+On passe par multiprocessing (et non par stdin/stdout) : un exécutable sans console n'a pas toujours de
+sortie standard sous Windows.
 """
-import json
-import subprocess
-import sys
+import multiprocessing
+import re
 import threading
 
 LANGUES = {"fr": "français", "en": "anglais", "es": "espagnol", "de": "allemand", "it": "italien",
@@ -36,24 +37,18 @@ def voix_pour(langue):
     return [v for v in lister_voix() if langue in v[2]]
 
 
-def _commande_worker():
-    if getattr(sys, "frozen", False):
-        return [sys.executable, "worker-voix"]
-    return [sys.executable, "-m", "orion", "worker-voix"]
-
-
-def worker():
-    """Boucle du processus de voix : une ligne JSON en entrée = une phrase à dire."""
+def worker(entree, sortie):
+    """Boucle du processus de voix : un ordre reçu = une phrase à dire, puis « fini »."""
     import pyttsx3
     moteur = pyttsx3.init()
-    for ligne in sys.stdin:
-        ordre = json.loads(ligne)
+    while True:
+        ordre = entree.get()
         if ordre.get("voix"):
             moteur.setProperty("voice", ordre["voix"])
         moteur.setProperty("rate", ordre.get("vitesse", 175))
         moteur.say(ordre["texte"])
         moteur.runAndWait()
-        print("fini", flush=True)
+        sortie.put("fini")
 
 
 class Bouche:
@@ -64,22 +59,34 @@ class Bouche:
         self._demarrer()
 
     def _demarrer(self):
-        self.proc = subprocess.Popen(_commande_worker(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     text=True, encoding="utf-8", bufsize=1)
+        self.entree, self.sortie = multiprocessing.Queue(), multiprocessing.Queue()
+        self.proc = multiprocessing.Process(target=worker, args=(self.entree, self.sortie), daemon=True)
+        self.proc.start()
+
+    def prononcer(self, texte):
+        """Remplace le nom par sa phonétique, si elle est renseignée (ex. « Orion » → « Oh-ri-on »)."""
+        phon = self.cfg.get("nom_phonetique", "").strip()
+        if not phon:
+            return texte
+        return re.sub(rf"\b{re.escape(self.cfg['nom'])}\b", phon, texte, flags=re.IGNORECASE)
 
     def dire(self, texte):
         """Bloque jusqu'à la fin de la phrase ou jusqu'à interrompre(). Renvoie False si interrompu."""
+        texte = self.prononcer(texte)
         with self.verrou:
-            proc = self.proc
-        try:
-            proc.stdin.write(json.dumps({"texte": texte, "voix": self.voix,
-                                         "vitesse": self.cfg["voix_vitesse"]}) + "\n")
-            proc.stdin.flush()
-            return proc.stdout.readline().strip() == "fini"
-        except (BrokenPipeError, OSError, ValueError):
-            return False
+            proc, entree, sortie = self.proc, self.entree, self.sortie
+        entree.put({"texte": texte, "voix": self.voix, "vitesse": self.cfg["voix_vitesse"]})
+        while proc.is_alive():  # interrompre() tue le processus : on rend la main aussitôt
+            try:
+                return sortie.get(timeout=0.2) == "fini"
+            except Exception:  # queue.Empty
+                continue
+        return False
 
     def interrompre(self):
         with self.verrou:
             self.proc.kill()
             self._demarrer()
+
+    def fermer(self):
+        self.proc.kill()

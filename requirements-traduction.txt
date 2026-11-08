@@ -1,0 +1,3 @@
+# Moteur de traduction hors ligne (facultatif en développement, inclus dans les installateurs)
+ctranslate2>=4,<5
+sentencepiece>=0.2,<0.3
