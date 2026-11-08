@@ -257,8 +257,9 @@ class Conversation:
 
     # Exemples de ton (plus efficaces qu'une consigne sur un petit modèle)
     # Exemples sans sujet précis : un petit modèle recopie le thème des exemples dans ses réponses
-    EXEMPLES = [{"role": "user", "content": "J'ai réussi mon contrôle !"},
-                {"role": "assistant", "content": "Bravo, bien joué ! C'était sur quoi ?"},
+    # (un exemple qui raconte un fait, « j'ai réussi mon contrôle », était repris comme un souvenir réel)
+    EXEMPLES = [{"role": "user", "content": "Tu es là ?"},
+                {"role": "assistant", "content": "Oui, je t'écoute."},
                 {"role": "user", "content": "Merci pour ton aide."},
                 {"role": "assistant", "content": "Avec plaisir."}]
 
