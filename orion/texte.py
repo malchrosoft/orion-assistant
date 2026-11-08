@@ -53,6 +53,11 @@ def trouver_eveil(texte: str, noms, prefixes):
     """Formule d'éveil « hey Orion » / « dis Orion » (et ses transcriptions approximatives : « et orion »,
     « eh au rions »…) dans les premiers mots. Renvoie (trouvé, reste de la phrase après la formule)."""
     mots = normaliser(texte).split()
+    # « dis-moi Orion » (formule par défaut) = « dis Orion » : le « moi » après la formule est ignoré
+    mots = [m for i, m in enumerate(mots) if not (m in ("moi", "mois", "moa") and i and mots[i - 1] in prefixes)]
+    # « moi » collé au nom par la transcription : « dis morillon » = « dis moi Orion »
+    mots = [m[1:] if i and mots[i - 1] in prefixes and m.startswith("m") and _est_nom([m[1:]], noms, True)
+            and not _est_nom([m], noms, True) else m for i, m in enumerate(mots)]
     for i, mot in enumerate(mots[:4]):
         if mot in prefixes:
             for largeur in (1, 2):

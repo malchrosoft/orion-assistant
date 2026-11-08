@@ -19,6 +19,27 @@ NOMS_ANGLAIS = {"fr": "french", "en": "english", "es": "spanish", "de": "german"
                 "zh": "chinese", "ja": "japanese", "ru": "russian"}
 
 
+def bip(volume=0.12):
+    """Petit carillon doux (deux notes montantes) : Orion est prêt à écouter, sans regarder l'écran.
+    Synthétisé à la volée : pas de fichier son à livrer, ni de décodeur, ni de licence."""
+    def jouer():
+        import array, math
+        try:
+            import sounddevice as sd
+            taux = int(sd.query_devices(kind="output")["default_samplerate"])
+            sons = array.array("h")
+            for frequence, duree in ((660, 0.09), (880, 0.14)):
+                n = int(taux * duree)
+                for i in range(n):  # attaque et extinction en douceur, sans clic
+                    enveloppe = min(1.0, i / (0.01 * taux)) * math.exp(-4 * i / n)
+                    sons.append(int(32767 * volume * enveloppe * math.sin(2 * math.pi * frequence * i / taux)))
+            with sd.RawOutputStream(samplerate=taux, channels=1, dtype="int16") as f:
+                f.write(sons.tobytes())
+        except Exception:
+            pass  # pas de sortie son : le changement de couleur suffit
+    threading.Thread(target=jouer, daemon=True).start()
+
+
 def lister_voix():
     """[(id, nom, codes langue détectés, genre ou None)] des voix installées sur le système."""
     import pyttsx3

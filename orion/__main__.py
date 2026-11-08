@@ -152,7 +152,7 @@ def boucle_vocale(cfg, holo):
     import random
     import re
     from . import modeles
-    from .bouche import LANGUES, Bouche, voix_pour
+    from .bouche import LANGUES, Bouche, bip, voix_pour
     from .config import UTILISATEUR, sauver
     from .persona import salutation
     from .voix import Oreille, Profils
@@ -206,29 +206,28 @@ def boucle_vocale(cfg, holo):
     eveil_jusqua = 0.0
 
     def parler(texte):
-        """Parle en continuant d'écouter : « stop », « tais-toi » ou le nom d'Orion l'interrompent.
-        Pour ne pas s'interrompre sur son propre écho, on ignore les mots qu'Orion est en train de dire."""
+        """Parle micro coupé : Orion ne s'entend jamais lui-même. Un clic sur l'hologramme (ou « Se taire »
+        au clic droit) l'interrompt ; il se met alors à écouter. Renvoie False s'il a été interrompu."""
         holo.changer("parole", texte)
-        dits = set(normaliser(texte).split())
         fini = threading.Event()
+        clics["en_attente"] = False
+        oreille.muet = True
         threading.Thread(target=lambda: (bouche.dire(texte), fini.set()), daemon=True).start()
-        oreille.vider()
-        while not fini.is_set():
-            entendu, final, _ = oreille.lire()
-            if not entendu or est_echo(entendu, texte):
-                continue  # sa propre voix captée par le micro
-            nouveaux = " ".join(m for m in normaliser(entendu).split() if m not in dits)
-            # pendant qu'il parle, seuls un ordre d'arrêt ou la formule complète l'interrompent (pas son nom
-            # seul, qu'il prononce souvent et que le micro retranscrit de travers)
-            if nouveaux and (re.search(STOP, nouveaux) or stop_lexique(entendu)
-                             or trouver_eveil(nouveaux, cfg["mots_eveil"], cfg["formules_eveil"])[0]):
+        interrompu = False
+        while not fini.wait(0.05):
+            if clics["en_attente"]:  # clic pendant qu'il parle : il se tait et écoute
+                clics["en_attente"] = False
                 bouche.interrompre()
-                holo.changer("ecoute", "Je t'écoute…")
-                return False  # on garde ce que l'utilisateur est en train de dire
-        time.sleep(0.4)  # laisse s'éteindre la résonance des haut-parleurs
-        oreille.vider()
+                interrompu = True
+                break
+        reprendre_micro()
         dernier_dit.update(texte=texte, quand=time.time())
-        return True
+        return not interrompu
+
+    def reprendre_micro():
+        time.sleep(0.5)  # laisse s'éteindre la résonance des haut-parleurs
+        oreille.vider()
+        oreille.muet = False
 
     def stop_lexique(entendu):
         """« Stop » dans la langue de discussion (lexique fait à la main, sans normalisation latine)."""
@@ -278,7 +277,7 @@ def boucle_vocale(cfg, holo):
                     clics["derniere_remarque"] = time.time()
                     etat_avant = "ecoute" if eveille else "veille"
                     parler(random.choice(CHAHUTE))
-                    holo.changer(etat_avant, "Je t'écoute…" if eveille else f"« dis {cfg['nom']} »")
+                    holo.changer(etat_avant, "Je t'écoute…" if eveille else f"« dis-moi {cfg['nom']} »")
             texte, final, empreinte = oreille.lire(0.5)
             if texte and not final and (eveille or trouver_eveil(texte, cfg["mots_eveil"],
                                                                    cfg["formules_eveil"])[0]):
@@ -316,7 +315,7 @@ def boucle_vocale(cfg, holo):
             return f"D'accord, ma voix est maintenant en {nom}."
         return ""
 
-    print(f"{cfg['nom']} est prêt. Dites « hey {cfg['nom']} » ou « dis {cfg['nom']} », puis votre demande. "
+    print(f"{cfg['nom']} est prêt. Dites « dis-moi {cfg['nom']} » (ou « dis {cfg['nom']} », « hey {cfg['nom']} »), puis votre demande. "
           "Ce terminal affiche ce qu'il entend.",
           flush=True)
     if not cfg["langue_confirmee"]:
@@ -335,11 +334,21 @@ def boucle_vocale(cfg, holo):
     # une question (pour qu'on puisse répondre « oui » sans répéter la formule).
     eveil_jusqua = 0.0
     dernier_locuteur = None
-    formule = f"dis {cfg['nom']}"
+    dernier_reconnu = None  # dernière personne reconnue à sa voix pendant cette session
+    formule = f"dis-moi {cfg['nom']}"
+    etait_eveille = False
     while True:
         if _date_config() != config_vue["date"]:  # réglages modifiés dans le panneau : appliqués tout de suite
             recharger()
         eveille = time.time() < eveil_jusqua
+        if eveille and not etait_eveille and cfg.get("bip_ecoute", True):
+            oreille.muet = True  # le bip ne doit pas être transcrit
+            bip()  # prêt à écouter (après avoir fini de parler) : signal sonore, sans regarder l'écran
+            time.sleep(0.1)
+            reprendre_micro()
+        if not eveille:
+            holo.interlocuteur("")  # conversation terminée
+        etait_eveille = eveille
         holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else f"« {formule} »")
         texte, empreinte = ecouter(eveille)
         if texte is None:  # clic sur l'hologramme : comme « dis Orion »… sauf si l'on s'acharne
@@ -355,7 +364,8 @@ def boucle_vocale(cfg, holo):
                 parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
-        if time.time() - dernier_dit["quand"] < 3 and est_echo(texte, dernier_dit["texte"]):
+        if time.time() - dernier_dit["quand"] < 6 and est_echo(texte, dernier_dit["texte"]) \
+                and not trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])[0]:
             print(f"[écho ignoré] {texte}", flush=True)
             continue
         t = normaliser(texte)
@@ -364,9 +374,28 @@ def boucle_vocale(cfg, holo):
               f"{oreille.confiance:.2f}] {texte}", flush=True)
         if not eveille and not nomme:
             continue
+        profils.data = Profils(cfg["seuil_locuteur"]).data  # voix ajoutées ou retirées depuis le panneau
+        locuteur = profils.identifier(empreinte)
+        print(f"[voix : {locuteur} · ressemblance {profils.score:.2f} / seuil {cfg['seuil_locuteur']}]", flush=True)
+        if locuteur != "invité" and profils.score >= cfg["seuil_locuteur"] + 0.1 and len(texte.split()) >= 4:
+            profils.apprendre(locuteur, empreinte)  # reconnu avec assurance : Orion affine sa mémoire de la voix
+        # continuité : une phrase courte ou peu claire en pleine discussion vient du même interlocuteur
+        if locuteur == "invité" and eveille and dernier_locuteur not in (None, "invité"):
+            locuteur = dernier_locuteur
+        dernier_locuteur = locuteur
+        # première fois qu'on l'entend, ou quelqu'un d'autre prend la parole : Orion montre qu'il l'a reconnu
+        nouveau = locuteur != "invité" and locuteur != dernier_reconnu
+        if locuteur != "invité":
+            dernier_reconnu = locuteur
+        holo.interlocuteur("" if locuteur == "invité" else locuteur)
         if nomme and not sans_nom.strip():  # « dis Orion » seul : couleur d'écoute, puis on attend la demande
             holo.changer("ecoute", "Je t'écoute…")
-            parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
+            if nouveau:
+                parler(cerveau._adapter(random.choice([
+                    f"Oui {locuteur}, je t'écoute.", f"Ah, c'est toi {locuteur} ! Je t'écoute.",
+                    f"Bonjour {locuteur}, que puis-je faire pour toi ?"]), locuteur))
+            else:
+                parler(random.choice(["Oui ?", "Je t'écoute.", "Oui, dis-moi."]))
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
         if oreille.confiance < cfg["confiance_min"]:
@@ -381,11 +410,6 @@ def boucle_vocale(cfg, holo):
         if not reste.strip():  # juste « stop » ou « Orion, tais-toi » : on se tait et on écoute
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
             continue
-        locuteur = profils.identifier(empreinte)
-        # continuité : une phrase courte ou peu claire en pleine discussion vient du même interlocuteur
-        if locuteur == "invité" and eveille and dernier_locuteur not in (None, "invité"):
-            locuteur = dernier_locuteur
-        dernier_locuteur = locuteur
         holo.changer("reflexion", f"{locuteur} : {texte}")
         phrase_fr = cerveau.en_francais(sans_nom if nomme else texte, discussion, traducteur)
         t_fr = normaliser(phrase_fr)
@@ -397,21 +421,26 @@ def boucle_vocale(cfg, holo):
             reponse, tache = cerveau.repondre(phrase_fr, locuteur)
         if tache:
             holo.changer("execution", "J'exécute…")
+            oreille.muet = True  # pendant la tâche, ses annonces de progression ne doivent pas être entendues
             reponse = tache()
+            reprendre_micro()
+            holo.derniere_action(f"{time.strftime('%H:%M')} · {reponse}")
             holo.progression("")
         if cerveau.a_recharger:  # après une installation ou « recharge-toi » : on applique avant de répondre
             cerveau.a_recharger = False
             recharger()
+        if nouveau and reponse and not normaliser(reponse).startswith(normaliser(locuteur)):
+            reponse = f"{random.choice(['Ah', 'Bonjour', 'Oui'])} {locuteur}. {reponse}"
         print(f"[{cfg['nom']}] {reponse}", flush=True)
-        dire(reponse)
+        coupe = dire(reponse) is False
         if cerveau.demande_enrolement:
             enregistrer_voix(cerveau.demande_enrolement)
             cerveau.demande_enrolement = None
-        profils.data = Profils(cfg["seuil_locuteur"]).data  # voix ajoutées ou retirées entre-temps
         # reste à l'écoute seulement si Orion attend une réponse (question posée), sinon se rendort
-        attend = (reponse or "").rstrip().endswith("?") or cerveau.en_attente or cerveau.question_tutoiement \
+        attend = (reponse or "").rstrip().endswith("?") or cerveau.en_attente or cerveau.ville_demandee is not None or cerveau.question_tutoiement \
             or cerveau.oubli_a_confirmer or cerveau.retrait_voix
-        eveil_jusqua = time.time() + cfg["fenetre_conversation_s"] if attend else 0.0
+        # interrompu en pleine phrase : on reste à l'écoute de ce qui suit
+        eveil_jusqua = time.time() + cfg["fenetre_conversation_s"] if attend or coupe else 0.0
 
 
 def demo_holo(holo):

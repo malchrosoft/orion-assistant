@@ -17,21 +17,40 @@ def _cosinus(a, b):
 
 
 class Profils:
-    """Une empreinte moyenne par personne, stockée en JSON."""
+    """Plusieurs empreintes par personne (stockées en JSON) : celles de l'enregistrement, puis celles des
+    phrases reconnues avec assurance, pour suivre les variations de la voix (distance au micro, fatigue…)."""
+    MAX = 40  # empreintes gardées par personne (les 5 de l'enregistrement ne sont jamais retirées)
 
     def __init__(self, seuil):
         self.seuil = seuil
+        self.score = 0.0  # ressemblance de la dernière voix identifiée (affichée dans le terminal)
         self.data = json.loads(PROFILS.read_text()) if PROFILS.exists() else {}
 
+    def _empreintes(self, nom):
+        v = self.data[nom]
+        return v if v and isinstance(v[0], list) else [v]  # ancien format : une seule empreinte moyenne
+
     def identifier(self, vecteur):
+        self.score = 0.0
         if not vecteur or not self.data:
             return "invité"
-        nom, score = max(((n, _cosinus(vecteur, v)) for n, v in self.data.items()), key=lambda x: x[1])
-        return nom if score >= self.seuil else "invité"
+        nom, self.score = max(((n, max(_cosinus(vecteur, e) for e in self._empreintes(n))) for n in self.data),
+                              key=lambda x: x[1])
+        return nom if self.score >= self.seuil else "invité"
 
     def enregistrer(self, nom, vecteurs):
-        moyenne = [sum(c) / len(vecteurs) for c in zip(*vecteurs)]
-        self.data[nom] = moyenne
+        self.data[nom] = [list(v) for v in vecteurs]
+        self._sauver()
+
+    def apprendre(self, nom, vecteur):
+        """Ajoute une empreinte reconnue avec assurance ; les plus anciennes apprises cèdent la place."""
+        empreintes = self._empreintes(nom) + [list(vecteur)]
+        if len(empreintes) > self.MAX:
+            del empreintes[5]
+        self.data[nom] = empreintes
+        self._sauver()
+
+    def _sauver(self):
         PROFILS.write_text(json.dumps(self.data))
 
 
