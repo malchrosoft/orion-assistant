@@ -12,6 +12,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from .texte import chiffres
 
@@ -246,7 +247,7 @@ def indexer(dossiers_possibles):
 
 
 def rechercher(sujet, publication=None, limite=3):
-    """[(lieu, texte)] les plus pertinents pour `sujet` (mots ou débuts de mots : « pardon » → « pardonner »)."""
+    """[(lieu, texte, publication)] les plus pertinents pour `sujet` (mots ou débuts de mots : « pardon » → « pardonner »)."""
     from .knowledge import VIDES
     from .texte import normaliser
     questions = {"pourquoi", "quand", "qui", "quoi", "etait", "etaient", "dit", "dire", "bible", "biblique",
@@ -260,7 +261,7 @@ def rechercher(sujet, publication=None, limite=3):
         for liaison in (" AND ", " OR "):  # d'abord tous les mots, sinon l'un d'eux
             # débuts de mots : « pardon » trouve « pardonnez » ; les mots longs perdent leur terminaison
             requete = "texte : (" + liaison.join(f'"{m if len(m) < 7 else m[:-2]}"*' for m in mots) + ")"
-            lignes = db.execute(f"SELECT lieu, texte FROM passages WHERE passages MATCH ?{filtre} "
+            lignes = db.execute(f"SELECT lieu, texte, publication FROM passages WHERE passages MATCH ?{filtre} "
                                 "ORDER BY rank LIMIT ?", (requete, *([publication + "%"] if publication else []), limite)).fetchall()
             if lignes:
                 return lignes
@@ -390,3 +391,35 @@ def programme_semaine(epub, date):
             semaine = _nettoyer(m.group(1))
             return semaine, [x for x in parties if normaliser(x) != normaliser(semaine)]
     return None
+
+
+_TITRES = {}
+
+
+def titre_epub(epub):
+    """Titre de la publication lu dans ses métadonnées (« Examinons les Écritures 2026 »), pour la citer."""
+    import zipfile
+    epub = str(epub)
+    if epub not in _TITRES:
+        try:
+            with zipfile.ZipFile(epub) as z:
+                opf = next(n for n in z.namelist() if n.endswith(".opf"))
+                m = re.search(r"<dc:title[^>]*>(.*?)</dc:title>", z.read(opf).decode("utf-8", "replace"), re.S)
+            _TITRES[epub] = re.sub(r"\s*\([\w-]+\)\s*$", "", _nettoyer(m.group(1))) if m else Path(epub).stem
+        except (OSError, StopIteration, zipfile.BadZipFile):
+            _TITRES[epub] = Path(epub).stem
+    return _TITRES[epub]
+
+
+REVUES = {"w": "La Tour de Garde", "g": "Réveillez-vous !"}
+
+
+def origine(reference):
+    """« w24.05 9-10 § 3-5 » (fin des textes du jour) → « La Tour de Garde, mai 2024, pages 9-10, § 3-5 »."""
+    m = re.match(r"([a-z]+)(\d{2})\.(\d{2})\s+([\d-]+)?\s*(§\s*[\d\-, ]+)?", reference.strip())
+    if not m or m.group(1) not in REVUES:
+        return reference.strip()
+    texte = f"{REVUES[m.group(1)]}, {MOIS_ACCENTS[int(m.group(3)) - 1]} 20{m.group(2)}"
+    if m.group(4):
+        texte += f", page{'s' if '-' in m.group(4) else ''} {m.group(4)}"
+    return texte + (f", {m.group(5).strip()}" if m.group(5) else "")

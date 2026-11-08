@@ -96,6 +96,7 @@ class Cerveau:
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
         self.symboliser = lambda libelle: None  # feuille qui s'écrit sur l'hologramme (branchée par la boucle vocale)
+        self.sources_reponse = []         # publications citées par la réponse en cours (pour les documents)
         self.derniere_reponse = None      # dernière réponse donnée : « fais-en un document Word »
         self.export_en_cours = False
         self.derniers_fichiers = []       # résultats de la dernière recherche de fichiers (« ouvre le premier »)
@@ -341,8 +342,9 @@ class Cerveau:
         """Vouvoiement si besoin, mémoire locale, et une fois par session : « on se tutoie ? »."""
         if (not self.export_en_cours and texte and not texte.rstrip().endswith("?")
                 and len(phrase.split()) > 2 and not re.search(OUI + "|" + NON, normaliser(phrase))):
-            sources = [s for s in (self.derniere_fiche or {}).get("sources", []) if s.get("consulte")] \
-                if self.derniere_origine in ("locale", "wikipedia") else []
+            sources = self.sources_reponse or ([s for s in (self.derniere_fiche or {}).get("sources", [])
+                                                 if s.get("consulte")]
+                                                if self.derniere_origine in ("locale", "wikipedia") else [])
             self.derniere_reponse = {"question": phrase, "contenu": texte, "sources": sources}
         self.export_en_cours = False
         if locuteur == "invité":
@@ -362,6 +364,7 @@ class Cerveau:
 
     def _repondre(self, phrase: str, locuteur: str):
         """Réponse brute, toujours rédigée au tutoiement."""
+        self.sources_reponse = []
         t = normaliser(phrase)
         for mot in self.cfg["mots_eveil"]:
             t = re.sub(rf"^(ok |dis |hey |salut )?{mot}\b[ ,]*", "", t)
@@ -414,7 +417,8 @@ class Cerveau:
                 return reponse, None
 
         # --- Compte à rebours (interne à Orion, affiché sur l'hologramme) ---
-        if re.search(r"\b(compte a rebours|minuteur|minuterie|chrono|timer)\b", t):
+        # « compte à rebours » est souvent mal transcrit (« mémento à rebours », « conte à rebours ») : « à rebours » suffit
+        if re.search(r"\b(a rebours|minuteur|minuterie|chrono|timer)\b", t):
             if re.search(r"\b(annule|arrete|stop|supprime|enleve)", t):
                 if not self.minuteur:
                     return "Il n'y a pas de compte à rebours en cours.", None
@@ -600,7 +604,8 @@ class Cerveau:
             trouves = publications.rechercher(phrase)
             if trouves:
                 self.derniere_origine = "bible"
-                return " ".join(f"{lieu} : {texte}" for lieu, texte in trouves[:2]), None
+                self._citer_passages(trouves[:2])
+                return " ".join(f"{lieu} : {texte}" for lieu, texte, _ in trouves[:2]), None
             if not publications.fichier_local("nwt", self._dossiers_publications()):
                 bible_epub = publications.chercher("nwt")
                 if bible_epub:
@@ -711,6 +716,7 @@ class Cerveau:
         epub = publications.fichier_local("nwt", self._dossiers_publications())
         texte = publications.verset(epub, livre, chapitre, debut, fin) if epub else None
         if texte:
+            self._citer(epub, nom, lien)
             return f"{nom} : {texte}", None
 
         def ouvrir():
@@ -741,10 +747,12 @@ class Cerveau:
             return (f"Je ne trouve rien sur {sujet} dans tes publications téléchargées. Pour la Bible, "
                     "demande-moi « télécharge la Bible »."), None
         if source == "es":
-            lieu, texte = trouves[0]
+            lieu, texte, _ = trouves[0]
+            self._citer_passages(trouves[:1])
             texte = re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", "")
             return f"Le {lieu[len('texte du '):]} en parlait : {texte}", None
-        return " ".join(f"{lieu} : {texte}" for lieu, texte in trouves[:2]), None
+        self._citer_passages(trouves[:2])
+        return " ".join(f"{lieu} : {texte}" for lieu, texte, _ in trouves[:2]), None
 
     def _telecharger_lien(self, lien):
         """Lien de téléchargement jw.org copié par l'utilisateur → EPUB proposé, puis retenu par son titre."""
@@ -795,6 +803,7 @@ class Cerveau:
             if code == "mwb" and not ouvrir:  # le programme de la semaine, lu à voix haute
                 r = publications.programme_semaine(chemin, date)
                 if r:
+                    self._citer(chemin, f"semaine du {r[0]}", lien)
                     return f"Programme de la semaine du {r[0]}. " + ". ".join(r[1]) + "."
             self.actions.ouvrir_lien(chemin.as_uri())
             return "Je t'ouvre " + ("le cahier Vie et ministère." if code == "mwb" else "La Tour de Garde d'étude.")
@@ -809,6 +818,23 @@ class Cerveau:
         return self._proposer_publications([pub], ouvrir=False, puis=lambda: lire_ou_ouvrir(
             next(d / pub["nom"] for d in self._dossiers_publications() if (d / pub["nom"]).exists())))
 
+    def _citer(self, epub, lieu, url=None, reference=None):
+        """Note la publication d'où vient l'information (et sa source d'origine), pour les documents générés."""
+        self.sources_reponse.append({"titre": f"{publications.titre_epub(epub)}, {lieu}", "url": url,
+                                     "niveau": 2, "consulte": knowledge.aujourdhui(), "portee": "fiche"})
+        if reference:
+            self.sources_reponse.append({"titre": f"Source d'origine : {publications.origine(reference)}",
+                                         "url": None, "niveau": 2, "consulte": knowledge.aujourdhui(),
+                                         "portee": "fiche"})
+
+    def _citer_passages(self, trouves):
+        for lieu, _, publication in trouves:
+            epub = next((d / f"{publication}.epub" for d in self._dossiers_publications()
+                         if (d / f"{publication}.epub").exists()), None)
+            if epub:
+                code = bible.reference(normaliser(lieu.replace(":", " "))) if publication.startswith("nwt") else None
+                self._citer(epub, lieu, f"https://www.jw.org/finder?wtlocale=F&bible={code}" if code else None)
+
     def _dossiers_publications(self):
         return [Path(os.path.expanduser(c)) for c in dossiers.liste(self.cfg).values()]
 
@@ -822,6 +848,8 @@ class Cerveau:
             r = publications.texte_du_jour(epub, date)
             if r:
                 titre, verset, commentaire = r
+                reference = re.search(r"\b[a-z]{1,3}\d{2}\.\d{2}\b.*$", commentaire)
+                self._citer(epub, titre[0].lower() + titre[1:], lien, reference.group(0) if reference else None)
                 commentaire = re.sub(r"\s*\b[a-z]{1,3}\d{2}\.\d{2}\b.*$", "", commentaire)  # référence finale
                 texte = f"Texte du {titre[0].lower() + titre[1:]}. {verset} {commentaire}"
                 return re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", ""), None
