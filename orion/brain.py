@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Compréhension des demandes : règles simples + calcul + base de savoir (+ LLM local optionnel)."""
 import ast
+import contextlib
 import datetime
 import json
 import math
@@ -9,6 +10,7 @@ import operator
 import os
 import random
 import re
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -93,6 +95,7 @@ class Cerveau:
         self.en_attente = None        # action proposée, exécutée si l'utilisateur répond « oui »
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
+        self.symboliser = lambda libelle: None  # feuille qui s'écrit sur l'hologramme (branchée par la boucle vocale)
         self.derniere_reponse = None      # dernière réponse donnée : « fais-en un document Word »
         self.export_en_cours = False
         self.derniers_fichiers = []       # résultats de la dernière recherche de fichiers (« ouvre le premier »)
@@ -272,12 +275,11 @@ class Cerveau:
         def produire(f):
             try:
                 dossier = dossiers.chemin(self.cfg, cle)
-                chemin = document.generer(f, renvois, dossier)
+                with self._redaction(f"la fiche sur {f['titre']}") as mesure:
+                    chemin = document.generer(f, renvois, dossier)
             except OSError as e:
                 return f"Je n'arrive pas à enregistrer la fiche : {e}."
-            a.ouvrir_lien(chemin.as_uri())
-            ou = f" dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}"
-            return f"Voilà la fiche sur {f['titre']}, enregistrée{ou}, avec ses sources en bas de page."
+            return self._document_pret(chemin, "la fiche", mesure["duree"])
         if fiche:
             if any(s["niveau"] == 0 for s in fiche["sources"] if s["consulte"]):
                 fiche["avertissement"] = ("Attention : cette fiche provient d'une page internet non vérifiée. "
@@ -337,7 +339,8 @@ class Cerveau:
 
     def _finaliser(self, texte, phrase, locuteur):
         """Vouvoiement si besoin, mémoire locale, et une fois par session : « on se tutoie ? »."""
-        if not self.export_en_cours and texte and not texte.rstrip().endswith("?"):
+        if (not self.export_en_cours and texte and not texte.rstrip().endswith("?")
+                and len(phrase.split()) > 2 and not re.search(OUI + "|" + NON, normaliser(phrase))):
             sources = [s for s in (self.derniere_fiche or {}).get("sources", []) if s.get("consulte")] \
                 if self.derniere_origine in ("locale", "wikipedia") else []
             self.derniere_reponse = {"question": phrase, "contenu": texte, "sources": sources}
@@ -398,6 +401,11 @@ class Cerveau:
             if len(sujet.split()) < 2:
                 return "Sur quel problème veux-tu que je cherche comment d'autres l'ont résolu ?", None
             return self._geants(sujet)
+
+        # --- Blagues : réserve locale relue (JokeAPI filtrée seulement si « blagues_internet » est activé) ---
+        if re.search(r"\b(blagues?|histoire drole|fais moi rire|une autre)\b", t) and (
+                "blague" in t or "rire" in t or "drole" in t or self.derniere_origine == "blague"):
+            return self._blague(), None
 
         # --- Ce qu'Orion sait faire : réponse courte, ciblée selon la question ---
         if re.search(CAPACITES_TOT, t):
@@ -872,8 +880,11 @@ class Cerveau:
             self.derniere_origine = "geants"
             if r["lignee"] or r["wikipedia"]:
                 try:
-                    chemin = document.generer(geants.fiche(r), True, dossiers.chemin(self.cfg))
-                    self.actions.ouvrir_lien(chemin.as_uri())
+                    with self._redaction("la fiche de recherche") as mesure:
+                        chemin = document.generer(geants.fiche(r), True, dossiers.chemin(self.cfg))
+                    return geants.a_dire(r).replace(" Je t'ai préparé une fiche avec la lignée complète et les "
+                                                    "sources.", "") + " " + self._document_pret(
+                        chemin, "la fiche avec la lignée et les sources", mesure["duree"])
                 except OSError:
                     pass
             self.signaler("")
@@ -884,24 +895,64 @@ class Cerveau:
         return (f"Je vais chercher comment d'autres ont déjà résolu « {sujet} », dans des sources ouvertes en "
                 "ligne : Wikipédia et le catalogue scientifique OpenAlex. J'y vais ?"), None
 
+    @contextlib.contextmanager
+    def _redaction(self, libelle, format_="PDF"):
+        """Pendant qu'Orion rédige : il l'annonce, et une feuille s'écrit sur l'hologramme (1,5 s au moins,
+        même si le fichier est prêt plus vite, pour qu'on voie ce qu'il fait)."""
+        debut, mesure = time.monotonic(), {}
+        self.symboliser(format_)
+        self.signaler(f"Je rédige {libelle}…")
+        try:
+            yield mesure
+        finally:
+            mesure["duree"] = time.monotonic() - debut  # temps réel de rédaction, avant l'attente d'affichage
+            time.sleep(max(0.0, 1.5 - mesure["duree"]))
+            self.symboliser(None)
+            self.signaler("")
+
+    def _document_pret(self, chemin, libelle, duree):
+        """Annonce le document et propose de l'ouvrir ; de temps en temps, Orion se vante de sa rapidité."""
+        dossier = "ton dossier personnel" if chemin.parent == Path.home() else f"le dossier {chemin.parent.name}"
+        ms = round(duree * 1000)
+        temps = ("moins d'une milliseconde" if ms < 1 else f"{ms} milliseconde{'s' if ms > 1 else ''}" if duree < 1
+                 else f"{duree:.1f} secondes".replace(".", ","))
+        f = libelle.startswith("la ")  # « la fiche », « la page web » : accords au féminin
+        e, il, Libelle = ("e" if f else ""), ("Elle" if f else "Il"), libelle[:1].upper() + libelle[1:]
+        if random.random() < 0.35:
+            texte = random.choice([
+                f"Et voilà : {libelle} rédigé{e} en {temps}, pas mal, non ? {il} s'appelle {chemin.name}, dans {dossier}.",
+                f"{temps[:1].upper() + temps[1:]} chrono pour {libelle} ! C'est {chemin.name}, rangé{e} dans {dossier}.",
+                f"Je n'ai pas traîné : {temps}. {Libelle} s'appelle {chemin.name}, dans {dossier}."])
+        else:
+            texte = f"{Libelle} est prêt{e} : {chemin.name}, dans {dossier}."
+        self.en_attente = lambda: (self.actions.ouvrir_lien(chemin.as_uri()), "Je te l'ouvre.")[1]
+        return texte + " Je l'ouvre ?"
+
     def _exporter(self, format_, cle=None):
         """Enregistre la dernière réponse dans le format demandé, puis l'ouvre."""
         r = self.derniere_reponse
         if not r:
             return "Pose-moi d'abord une question : j'en ferai ensuite un document.", None
-        noms = {"docx": "le document Word", "md": "le fichier Markdown", "html": "la page web", "pdf": "le PDF"}
+        noms = {"docx": "le document Word", "md": "le fichier Markdown", "html": "la page web", "pdf": "le PDF",
+                "pdf_pro": "le rapport PDF"}
 
         def creer():
             titre = re.sub(r"[?!.]+$", "", r["question"]).strip()
             doc = {"titre": titre[:1].upper() + titre[1:], **r}
             try:
-                chemin = export.generer(doc, format_, dossiers.chemin(self.cfg, cle))
-            except OSError as e:
+                with self._redaction(noms[format_], "PDF PRO" if format_ == "pdf_pro" else format_.upper()) as mesure:
+                    chemin = export.generer(doc, format_, dossiers.chemin(self.cfg, cle))
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
                 return f"Je n'arrive pas à enregistrer le document : {e}."
-            self.actions.ouvrir_lien(chemin.as_uri())
             self.export_en_cours = True
-            return f"Voilà {noms[format_]}, {'enregistrée' if format_ == 'html' else 'enregistré'} dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
+            return self._document_pret(chemin, noms[format_], mesure["duree"])
         return None, creer
+
+    def _blague(self):
+        from . import blagues
+        question, chute = blagues.blague(self.cfg.get("blagues_internet", False))  # réserve relue par défaut
+        self.derniere_origine = "blague"
+        return f"{question} … {chute}" if chute else question
 
     def _capacites(self, t, generique=True):
         """Fiche de capacité la plus proche de la question (2 ou 3 phrases), ou un résumé très court."""

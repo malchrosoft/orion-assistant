@@ -25,6 +25,11 @@
   "contenu": "Demande-moi l'heure, la date, ou un calcul : « combien font 12 fois 7 ? »."
  },
  {
+  "titre": "Blagues",
+  "motscles": "blague blagues rire drole histoire humour amuser",
+  "contenu": "Dis « raconte-moi une blague », puis « une autre ». Elles sont choisies pour toute la famille."
+ },
+ {
   "titre": "Compte à rebours",
   "motscles": "compte rebours minuteur minuterie chrono timer temps reste annuler bip sonnerie",
   "contenu": "Dis « compte à rebours de 5 minutes ». Il s'affiche sur mon hologramme ; à la fin, je bipe cinq fois, puis je préviens la personne qui l'a demandé si personne n'a cliqué. « Combien de temps reste-t-il ? » et « annule le minuteur » marchent aussi."
@@ -46,8 +51,8 @@
  },
  {
   "titre": "Fiches et documents",
-  "motscles": "fiche pdf document resume imprimer generer dossier word docx markdown html page web exporter enregistrer reponse",
-  "contenu": "Dis « fais une fiche sur le théorème de Pythagore » pour un PDF avec ses sources. Après une réponse, dis « fais-en un document Word », « exporte ça en Markdown », « en page web » ou « en PDF » : je l'enregistre dans tes documents et je l'ouvre."
+  "motscles": "fiche pdf document resume imprimer generer dossier word docx markdown html page web exporter enregistrer reponse rapport professionnel qualite pro latex",
+  "contenu": "Dis « fais une fiche sur le théorème de Pythagore » pour un PDF avec ses sources. Après une réponse, dis « fais-en un document Word », « exporte ça en Markdown », « en page web » ou « en PDF », ou « en rapport de qualité pro » : je l'enregistre dans tes documents et je te propose de l'ouvrir."
  },
  {
   "titre": "Bible et textes du jour",

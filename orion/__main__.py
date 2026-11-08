@@ -193,6 +193,7 @@ def boucle_vocale(cfg, holo):
             annonces.update(etape=etape, palier=palier, quand=maintenant)
             bouche.dire(etape if fraction is None else f"{etape} : {int(fraction * 100)} pour cent.")  # sans écoute de l'interruption : phrase courte, la tâche continue après
     cerveau.signaler = signaler_tache
+    cerveau.symboliser = holo.redaction
     config_vue = {"date": _date_config()}
 
     def recharger():
