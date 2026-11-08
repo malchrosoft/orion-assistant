@@ -96,6 +96,7 @@ class Cerveau:
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
         self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
         self.symboliser = lambda libelle: None  # feuille qui s'écrit sur l'hologramme (branchée par la boucle vocale)
+        self.tour, self.dernier_note = 0, None  # dernier échange mémorisé : (personne, n° d'échange, souvenir)
         self.sources_reponse = []         # publications citées par la réponse en cours (pour les documents)
         self.derniere_reponse = None      # dernière réponse donnée : « fais-en un document Word »
         self.export_en_cours = False
@@ -119,6 +120,7 @@ class Cerveau:
         Ajoute à la réponse brute la relation avec la personne : tutoiement, mémoire locale, voix inconnue."""
         connu = locuteur != "invité"
         t = normaliser(phrase)
+        self.tour += 1  # numéro de l'échange (pour « oublie ça » : seulement l'échange juste avant)
 
         # Confirmation du retrait d'une voix
         if self.retrait_voix:
@@ -218,6 +220,7 @@ class Cerveau:
             if not espace.place_pour(self.cfg, 10_000):
                 return self._adapter(espace.refus(self.cfg), locuteur), None
             personnes.retenir(locuteur, souvenir)
+            self.dernier_note = (locuteur, self.tour, souvenir)
             return self._adapter("C'est retenu, sans limite de temps : " + personnes.a_la_deuxieme(souvenir) + ".",
                                  locuteur), None
         m = re.search(r"^oublie (?:que |qu )(.+)$", t)
@@ -226,7 +229,47 @@ class Cerveau:
             texte = re.sub(r"^\s*oublie\s+(?:que |qu')", "", phrase.strip(), flags=re.IGNORECASE).rstrip(" .?!")
             return self._adapter(f"Tu veux vraiment que j'oublie que {personnes.a_la_deuxieme(texte)} ? "
                                  "Dis oui pour confirmer.", locuteur), None
-        if re.search(r"\b(oublie (tout )?ce que tu sais (de|sur) moi|oublie moi|oublie tout|efface (mes donnees|ma memoire))\b", t):
+        # « cherche dans ta mémoire sur moi … » : recherche textuelle, puis suppression sur confirmation
+        m = re.search(r"(?:\b(?:cherche|retrouve)\b.*?\b(?:memoire|souvenirs?)\b|\bqu est ce que tu as retenu\b|"
+                      r"\btu te souviens\b).*?\b(?:sur|de|a propos d[eu]?|concernant|avec)\s+"
+                      r"(?:moi\s+)?(?:sur |de |a propos d[eu]? |concernant )?(?:le |la |les |l |un |une )?(.+)$", t)
+        if m and connu and m.group(1) not in ("moi", "toi"):
+            trouvees = personnes.chercher_memoire(locuteur, m.group(1))
+            if not trouvees:
+                return self._adapter(f"Je n'ai rien en mémoire sur « {m.group(1)} ».", locuteur), None
+            extraits = " ; ".join(f"« {texte[:70]} »" for _, _, texte in trouvees[:3])
+            self.en_attente = lambda: self._adapter(
+                f"C'est fait : {personnes.supprimer_entrees(locuteur, trouvees)} entrée"
+                f"{'s' if len(trouvees) > 1 else ''} oubliée{'s' if len(trouvees) > 1 else ''}.", locuteur)
+            return self._adapter(f"J'ai {len(trouvees)} entrée{'s' if len(trouvees) > 1 else ''} sur « {m.group(1)} » : "
+                                 f"{extraits}{' …' if len(trouvees) > 3 else ''}. Je {'les' if len(trouvees) > 1 else "l'"}"
+                                 f"{' ' if len(trouvees) > 1 else ''}oublie ?", locuteur), None
+
+        # « oublie ça », « oublie cette histoire », « oublie ce que tu viens de dire » : seulement le dernier
+        # échange, sans proposer de tout effacer
+        if re.search(r"^(?:oublie|efface|laisse tomber|n en tiens pas compte)\b.*\b(cette histoire|cela|ca|"
+                     r"ce que (?:tu viens|je viens|je t ai|tu m as) (?:de )?(?:dire|dit|raconter|raconte)|"
+                     r"la derniere chose|ce dernier echange|cette (?:definition|reponse)|ta (?:definition|reponse))$", t) \
+                or t in ("oublie", "oublie ca", "oublie tout ca"):
+            oublie = None
+            if connu and self.dernier_note and self.dernier_note[:2] == (locuteur, self.tour - 1):
+                souvenir = self.dernier_note[2]
+                if souvenir:  # l'échange précédent était « retiens que… » : on retire ce souvenir-là
+                    personnes.oublier_souvenir(locuteur, souvenir)
+                    oublie = souvenir
+                else:
+                    oublie = personnes.oublier_dernier(locuteur)
+            self.dernier_note = None
+            historique = self.conversation.historiques.get(locuteur, [])
+            del historique[-2:]  # la discussion en cours ne s'appuiera plus dessus
+            self.derniere_reponse = None
+            if oublie:
+                return self._adapter(f"C'est oublié : « {oublie} ». Le reste de ce que je sais sur toi ne bouge pas.",
+                                     locuteur), None
+            return "C'est oublié, on n'en parle plus.", None
+
+        if re.search(r"\b(oublie (tout )?ce que tu sais (de|sur) moi|oublie moi|oublie tout(?! ca\b)|"
+                     r"efface (mes donnees|ma memoire))\b", t):
             if not connu:
                 return "Je n'ai pas reconnu ta voix, et je ne garde rien sur les personnes que je ne connais pas.", None
             self.oubli_a_confirmer = (locuteur, None)
@@ -352,6 +395,7 @@ class Cerveau:
         texte = self._adapter(texte, locuteur)
         if espace.place_pour(self.cfg, 2_000):  # l'historique n'est pas essentiel : sans place, on ne l'écrit pas
             personnes.noter_echange(locuteur, phrase, texte)
+            self.dernier_note = (locuteur, self.tour, None)
         if not self.alerte_espace_donnee and espace.alerte(self.cfg) and "plus de place" not in texte:
             self.alerte_espace_donnee = True
             texte += " " + self._adapter(espace.alerte(self.cfg), locuteur)

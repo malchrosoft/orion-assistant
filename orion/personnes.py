@@ -114,6 +114,43 @@ def retenir(nom, souvenir):
     _ecrire(data)
 
 
+def chercher_memoire(nom, mots):
+    """Entrées de la mémoire de la personne qui contiennent ces mots (recherche textuelle, sans accents) :
+    [(« souvenir » | « échange », position, texte lisible)], les plus récentes d'abord."""
+    p, cible = fiche(nom), normaliser(mots)
+    if not cible:
+        return []
+    trouvees = [("souvenir", i, s["texte"]) for i, s in enumerate(p.get("souvenirs", []))
+                if cible in normaliser(s["texte"])]
+    trouvees += [("échange", i, f"{e['question']} → {e['reponse']}") for i, e in enumerate(p.get("historique", []))
+                 if cible in normaliser(e["question"] + " " + e["reponse"])]
+    return list(reversed(trouvees))
+
+
+def supprimer_entrees(nom, entrees):
+    """Supprime les entrées trouvées par chercher_memoire ; renvoie leur nombre."""
+    data = _lire()
+    p = data.get(nom, {})
+    for genre, cle in (("souvenir", "souvenirs"), ("échange", "historique")):
+        positions = {i for g, i, _ in entrees if g == genre}
+        if positions and cle in p:
+            p[cle] = [e for i, e in enumerate(p[cle]) if i not in positions]
+    _ecrire(data)
+    return len(entrees)
+
+
+def oublier_dernier(nom):
+    """Oublie le dernier échange (« oublie ça ») de l'historique ; renvoie sa question, ou None."""
+    data = _lire()
+    p = data.get(nom, {})
+    historique = p.get("historique", [])
+    if not historique:
+        return None
+    dernier = historique.pop()
+    _ecrire(data)
+    return dernier["question"]
+
+
 def oublier_souvenir(nom, mots):
     """Retire les souvenirs qui contiennent les mots donnés ; renvoie le nombre retiré."""
     data = _lire()
