@@ -87,11 +87,20 @@ sans raison, source citée.
     volume) et touches multimédia du clavier, qui ne passent pas par le micro ;
   - baisser automatiquement le volume de la musique pendant qu'Orion parle, puis le rétablir.
 
+### Commandes
+- **Bac à sable sous Linux et Windows** (bubblewrap, ou un compte restreint) : aujourd'hui seuls les filtres
+  y protègent.
+
 ### Distribution
 - **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée.
 
 ## Fait récemment
 
+- Musique avec n'importe quel lecteur : Musique (Apple), Spotify et VLC sous macOS (lecteur demandé, en
+  cours ou préféré), touches multimédia et AIMP sous Windows, playerctl sous Linux ; Orion dit quand aucun
+  lecteur ne répond ou quand macOS attend une autorisation.
+- Compétence « commande » : questions sur l'ordinateur résolues par une commande de consultation écrite par
+  le modèle local (zsh, bash, PowerShell), liste blanche, accord demandé, bac à sable sous macOS.
 - Voix naturelles : Kokoro (Siwis, Apache 2.0), Miro (homme, débit corrigé) et Supertonic 3 (2 voix de
   femme, 4 voix d'homme, plus vivantes ; moteur 2.x installé à côté). Toutes locales.
 - Icônes de l'application : `.icns` pour macOS (16 à 1024 px), icône du paquet Linux (menu des

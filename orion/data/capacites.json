@@ -21,8 +21,8 @@
  },
  {
   "titre": "Musique, volume et applications",
-  "motscles": "musique morceau chanson playlist spotify aimp joue mets pause suivant volume son monte baisse application appli ouvrir lancer",
-  "contenu": "Je lance la musique sur Spotify ou AIMP : « mets de la musique », « joue… », « pause », « morceau suivant ». Je règle le volume : « monte le volume ». J'ouvre aussi tes applications : « ouvre la calculatrice »."
+  "motscles": "musique morceau chanson playlist spotify aimp joue mets pause suivant volume son monte baisse application appli ouvrir lancer vlc apple itunes lecteur",
+  "contenu": "Je pilote Musique (Apple), Spotify, VLC, AIMP, ou n'importe quel lecteur par les touches multimédia : « mets de la musique », « joue Daft Punk », « … sur VLC », « pause », « morceau suivant ». Je règle aussi le volume et j'ouvre tes applications. Ton lecteur préféré se choisit dans le panneau."
  },
  {
   "titre": "Heure, date et calculs",
@@ -76,8 +76,8 @@
  },
  {
   "titre": "Ton ordinateur",
-  "motscles": "ordinateur espace libre place disque disques fichier dossier chercher trouver systeme version processeur memoire",
-  "contenu": "Je te dis l'espace libre, les disques branchés, les caractéristiques de l'ordinateur et sa version. « Cherche le fichier… » ou « où est le dossier… » cherche dans ton dossier personnel, puis « ouvre le premier ». Je ne modifie rien."
+  "motscles": "ordinateur espace libre place disque disques fichier dossier chercher trouver systeme version processeur memoire commande bash shell terminal powershell batterie ip processus",
+  "contenu": "Je te dis l'espace libre, les disques branchés, les caractéristiques de l'ordinateur et sa version. « Cherche le fichier… » ou « où est le dossier… » cherche dans ton dossier personnel, puis « ouvre le premier ». Je ne modifie rien. Pour le reste (batterie, adresse IP, programmes qui consomment…), j'écris une commande de consultation, je te la montre et je ne la lance qu'avec ton accord, sans rien pouvoir modifier."
  },
  {
   "titre": "Langues",

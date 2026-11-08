@@ -2,7 +2,7 @@
 
 ![Orion, assistant vocal local](docs/visuels/orion-artistique.png)
 
-Orion parle et écoute en français, sur l'ordinateur, sans envoyer vos paroles en ligne. Il reconnaît chaque membre de la famille à sa voix, retient ce qu'on lui demande, pilote la musique, donne la météo, lance des comptes à rebours, rédige des documents et répond aux questions **en citant ses sources**. Un visage holographique animé montre ce qu'il fait.
+Orion parle et écoute en français, sur l'ordinateur, sans envoyer vos paroles en ligne. Il reconnaît chaque membre de la famille à sa voix, retient ce qu'on lui demande, pilote la musique (Musique d'Apple, Spotify, VLC, AIMP ou tout lecteur compatible), donne la météo, lance des comptes à rebours, rédige des documents et répond aux questions **en citant ses sources**. Un visage holographique animé montre ce qu'il fait.
 
 Projet ludique et public, inspiré de [jarvis-assistant](https://github.com/jaouadinoham2/jarvis-assistant). Ce qui est prévu ensuite : [`ROADMAP.md`](ROADMAP.md).
 
@@ -76,6 +76,7 @@ Avec la souris : **clic** = écouter (s'acharner sur l'hologramme lui fait deman
 - **Météo** dite à voix haute, depuis [Open-Meteo](https://open-meteo.com) (données ouvertes) : aujourd'hui, demain, un jour de la semaine. Orion demande votre ville la première fois, ou la devine d'après votre connexion si vous lui dites « devine ». « Montre-moi la météo » l'affiche à l'écran.
 - **Comptes à rebours** internes, **nommés** (« minuteur des pâtes de 10 minutes ») et **jusqu'à trois à la fois**, chacun avec sa couleur et **sa note** (do, mi, sol : un bip au départ, les mêmes bips à la fin, pour le reconnaître à l'oreille) ; consultables (« combien de temps reste-t-il ? ») et annulables un par un ou tous ensemble. Orion annonce à la fin lequel est terminé.
 - **Blagues** pour toute la famille, choisies et relues, sans répétition avant d'avoir tout dit.
+- **Commandes de consultation** : pour une question sur l'ordinateur (batterie, adresse IP, programmes qui consomment…), le modèle local écrit une commande (zsh, bash ou PowerShell) ; Orion n'accepte que des outils de lecture d'une liste blanche, la montre, attend votre « oui », puis la lance 10 s au plus — sous macOS dans un bac à sable sans écriture ni réseau.
 - **L'ordinateur, en lecture seule** : espace libre, disques branchés, système, processeur, mémoire, version d'Orion ; recherche de fichiers et de dossiers dans votre dossier personnel, puis « ouvre le premier ». Orion n'y modifie rien.
 
 ## Documents à la demande
