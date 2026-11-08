@@ -14,6 +14,7 @@
   python -m orion dossiers [ajouter MOT CHEMIN | retirer MOT | defaut MOT]   dossiers d'enregistrement des PDF
 """
 import math
+import re
 import os
 import sys
 import threading
@@ -424,6 +425,7 @@ def boucle_vocale(cfg, holo):
     eveil_jusqua = 0.0
     dernier_locuteur = None
     dernier_reconnu = None  # dernière personne reconnue à sa voix pendant cette session
+    voix_precedente = {}    # empreinte et hauteur de la dernière phrase longue (pour une correction)
     formule = f"dis-moi {cfg['nom']}"
     etait_eveille = False
     while True:
@@ -437,7 +439,8 @@ def boucle_vocale(cfg, holo):
                 time.sleep(0.1)
                 reprendre_micro()
             if not eveille:
-                holo.interlocuteur("")  # conversation terminée
+                holo.interlocuteur("")  # conversation terminée : la prochaine voix est réidentifiée
+                dernier_reconnu = None
             etait_eveille = eveille
             holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else f"« {formule} »")
             texte, empreinte = ecouter(eveille)
@@ -466,17 +469,48 @@ def boucle_vocale(cfg, holo):
                   f"{oreille.confiance:.2f}] {texte}", flush=True)
             if not eveille and not nomme:
                 continue
-            profils.data = Profils(cfg["seuil_locuteur"]).data  # voix ajoutées ou retirées depuis le panneau
+            frais = Profils(cfg["seuil_locuteur"])  # voix ajoutées ou retirées depuis le panneau
+            profils.data, profils.hauteurs = frais.data, frais.hauteurs
+            hz = oreille.hauteur
             # l'empreinte d'une phrase très courte (« dis-moi Orion », « oui ») est peu fiable : on garde alors
             # la personne reconnue juste avant plutôt que de la déclarer inconnue
             courte = len(texte.split()) < 4
-            locuteur = profils.identifier(empreinte)
-            if locuteur == "invité" and courte and dernier_reconnu:
+
+            # « tu te trompes, c'est Irina », « je ne suis pas Éléonore, je suis Irina » : Orion bascule sur
+            # cette personne et apprend la voix qu'il avait mal attribuée
+            corrige = nom_annonce(texte, list(profils.data))
+            if corrige:
+                if voix_precedente.get("empreinte") or voix_precedente.get("hz"):
+                    profils.apprendre(corrige, voix_precedente.get("empreinte"), voix_precedente.get("hz"))
+                dernier_reconnu = dernier_locuteur = corrige
+                holo.interlocuteur(corrige, personnes.couleur(corrige))
+                print(f"[voix corrigée : {corrige}]", flush=True)
+                parler(cerveau._adapter(f"Pardon {corrige} ! Je retiens mieux ta voix pour la prochaine fois.",
+                                        corrige))
+                eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
+                continue
+
+            locuteur = profils.identifier(empreinte, hz)
+            if profils.ambigu and not courte:  # deux voix trop proches : on demande plutôt que de se tromper
+                candidats = list(profils.ambigu)
+                liste = ", ".join(candidats[:-1]) + " ou " + candidats[-1]
+                parler(f"Je confonds un peu vos voix : qui parle, {liste} ?")
+                holo.changer("ecoute", f"{liste} ?")
+                reponse_nom, _ = ecouter(True)
+                choisi = nom_annonce(reponse_nom or "", candidats, libre=True)
+                if choisi:
+                    locuteur = choisi
+                    profils.apprendre(choisi, empreinte, hz)  # confirmé par la personne : précieux pour départager
+                    print(f"[voix confirmée : {choisi}]", flush=True)
+            if not courte:
+                voix_precedente.update(empreinte=empreinte, hz=hz)
+            if locuteur == "invité" and courte and dernier_reconnu and eveille:  # seulement en pleine conversation
                 locuteur = dernier_reconnu
             print(f"[voix : {locuteur} · ressemblance {profils.score:.2f} / seuil {cfg['seuil_locuteur']}"
-                  f"{' · phrase courte' if courte else ''}]", flush=True)
-            if locuteur != "invité" and profils.score >= cfg["seuil_locuteur"] + 0.05 and not courte:
-                profils.apprendre(locuteur, empreinte)  # reconnu avec assurance : Orion affine sa mémoire de la voix
+                  f"{f' · {hz:.0f} Hz' if hz else ''}{' · phrase courte' if courte else ''}]", flush=True)
+            if locuteur != "invité" and profils.score >= cfg["seuil_locuteur"] + 0.05 and not courte \
+                    and not profils.ambigu:
+                profils.apprendre(locuteur, empreinte, hz)  # reconnu avec assurance : Orion affine sa mémoire de la voix
             # continuité : une phrase courte ou peu claire en pleine discussion vient du même interlocuteur
             if locuteur == "invité" and eveille and dernier_locuteur not in (None, "invité"):
                 locuteur = dernier_locuteur
@@ -558,6 +592,23 @@ REPRISES = [
     "J'ai fait un petit redémarrage en douce. Personne n'a rien vu, n'est-ce pas ?",
     "Mes neurones de silicium ont fait des nœuds. C'est démêlé, vas-y.",
 ]
+
+
+def nom_annonce(texte, noms, libre=False):
+    """Personne enregistrée qui se nomme pour corriger Orion (« tu te trompes, c'est Irina », « je ne suis
+    pas Éléonore, je suis Irina »), ou, si `libre`, simplement citée en réponse à « tu es X ou Y ? »."""
+    from .texte import normaliser
+    t = normaliser(texte)
+    if not libre and not re.search(r"\b(trompes?|confonds|erreur|pas (?:moi|\w+ je suis)|c est moi|"
+                                   r"je ne suis pas|moi c est|ici c est)\b", t):
+        return None
+    cites = [n for n in noms if re.search(rf"\b{re.escape(normaliser(n))}\b", t)
+             and not re.search(rf"\bpas {re.escape(normaliser(n))}\b", t)]  # « (je ne suis) pas Éléonore »
+    if not libre:  # « je ne suis pas Éléonore, je suis Irina » : le nom qui suit « je suis / c'est »
+        apres = [n for n in cites if re.search(rf"\b(je suis|c est|moi c est|ici c est|c est moi) "
+                                               rf"{re.escape(normaliser(n))}\b", t)]
+        cites = apres or ([cites[-1]] if len(cites) == 1 else [])
+    return cites[0] if len(cites) == 1 else None
 
 
 def journal(erreur):

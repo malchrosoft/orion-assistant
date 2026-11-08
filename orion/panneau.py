@@ -564,6 +564,7 @@ class Panneau:
         ttk.Button(ligne, text="Enregistrer sa voix", command=self._enroler).pack(side="left")
         ttk.Button(ligne, text="Supprimer", command=self._supprimer_voix).pack(side="left")
         ttk.Button(ligne, text="Couleur…", command=self._choisir_couleur).pack(side="left")
+        ttk.Button(ligne, text="Comparer les voix…", command=self._comparer_voix).pack(side="left")
         self.etat_enrolement = tk.StringVar(value="Cliquez, puis lisez 5 phrases à voix haute, une par une. "
                                                   "Fermez Orion vocal pendant l'enregistrement (micro partagé).")
         ttk.Label(f, textvariable=self.etat_enrolement, foreground=DISCRET, wraplength=720,
@@ -580,6 +581,40 @@ class Panneau:
             couleur = personnes.couleur(nom)
             if couleur:
                 self.liste_voix.itemconfigure("end", foreground=couleur)
+
+    def _comparer_voix(self):
+        """Valeurs enregistrées de chaque voix et ressemblances deux à deux, pour repérer les confusions."""
+        from .voix import Profils
+        seuil = self.cfg["seuil_locuteur"]
+        donnees = Profils(seuil).comparaison()
+        f = tk.Toplevel(self.root)
+        f.title("Comparer les voix")
+        f.configure(bg=self.root.cget("bg"))
+        noms = list(donnees)
+        arbre = ttk.Treeview(f, columns=["empreintes", "hauteur"] + noms, height=max(3, len(noms)))
+        arbre.heading("#0", text="Personne")
+        arbre.heading("empreintes", text="Empreintes")
+        arbre.heading("hauteur", text="Hauteur moy.")
+        arbre.column("#0", width=120)
+        arbre.column("empreintes", width=90, anchor="center")
+        arbre.column("hauteur", width=100, anchor="center")
+        for n in noms:
+            arbre.heading(n, text=n)
+            arbre.column(n, width=90, anchor="center")
+        arbre.tag_configure("confusion", foreground="#ff8a5c")
+        for n, d in donnees.items():
+            valeurs = [d["empreintes"], f"{d['hauteur']:.0f} Hz" if d["hauteur"] else "à mesurer"]
+            valeurs += ["—" if a == n else f"{d['proches'][a]:.2f}" for a in noms]
+            confusion = any(v >= seuil for v in d["proches"].values())
+            arbre.insert("", "end", text=("⚠ " if confusion else "") + n, values=valeurs,
+                         tags=("confusion",) if confusion else ())
+        arbre.pack(fill="both", expand=True, padx=8, pady=8)
+        ttk.Label(f, foreground=DISCRET, wraplength=640, justify="left", text=(
+            f"Ressemblance entre deux voix (0 à 1) ; au-dessus du seuil ({seuil:.2f}), Orion peut les confondre (⚠). "
+            "Pour les départager : réenregistrez ces voix au calme, à la même distance du micro ; quand Orion "
+            "hésite, il demande « tu es X ou Y ? » ; s'il se trompe, dites « tu te trompes, c'est … ». "
+            "La hauteur moyenne de la voix, mesurée au fil des phrases, l'aide aussi à les distinguer.")
+        ).pack(anchor="w", padx=8, pady=(0, 8))
 
     def _choisir_couleur(self):
         """Couleur de la personne sélectionnée : elle teinte le halo de l'hologramme quand Orion la reconnaît."""
