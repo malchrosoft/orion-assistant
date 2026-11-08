@@ -79,16 +79,22 @@ def chercher(code, numero=""):
             "nom": f["file"]["url"].rsplit("/", 1)[-1]}
 
 
-def telecharger(pub, dossier):
-    """Enregistre le fichier dans `dossier` (déjà présent : rien n'est retéléchargé) ; renvoie son chemin."""
+def telecharger(pub, dossier, signaler=None):
+    """Enregistre le fichier dans `dossier` (déjà présent : rien n'est retéléchargé) ; renvoie son chemin.
+    `signaler(texte)` reçoit l'avancement (« … : 40 % ») pour les gros fichiers (vidéos)."""
     dossier.mkdir(parents=True, exist_ok=True)
     chemin = dossier / pub["nom"]
     if not chemin.exists():
         provisoire = chemin.with_suffix(".partiel")
         with urllib.request.urlopen(urllib.request.Request(pub["url"], headers=UA), timeout=120) as r, \
                 open(provisoire, "wb") as f:
+            total, recu, palier = pub.get("octets") or int(r.headers.get("Content-Length", 0)), 0, 0
             while bloc := r.read(1 << 20):
                 f.write(bloc)
+                recu += len(bloc)
+                if signaler and total and recu * 10 // total > palier:
+                    palier = recu * 10 // total
+                    signaler(f"Téléchargement de « {pub['titre']} » : {palier * 10} %")
         provisoire.rename(chemin)
     indexer([dossier])  # entrées consultables aussitôt (recherche par thème)
     return chemin
@@ -460,3 +466,42 @@ def partie_du_programme(parties, t):
 def sans_coupures(texte):
     """Texte cité, prêt à être lu : « [Dieu] ne s'est pas […] retenu » → « Dieu ne s'est pas retenu »."""
     return re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", "")
+
+
+# --- Émissions vidéo mensuelles (vidéothèque publique du site : fichiers MP4, téléchargement autorisé) ----------
+VIDEOTHEQUE = "https://b.jw-cdn.org/apis/mediator/v1/categories/F/StudioMonthlyPrograms?detailed=1&clientType=www"
+QUALITES = ("360p", "480p", "720p")  # 360p par défaut : bonne image pour un poids raisonnable
+
+
+def emissions_mensuelles():
+    """[{titre, date, fichiers: {qualité: (url, octets)}}], la plus récente d'abord ; [] si injoignable."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(VIDEOTHEQUE, headers=UA), timeout=15) as r:
+            medias = json.load(r)["category"]["media"]
+    except Exception:
+        return []
+    return [{"titre": m["title"], "date": m.get("firstPublished", "")[:10],
+             "fichiers": {f["label"]: (f["progressiveDownloadURL"], f.get("filesize", 0))
+                          for f in m.get("files", []) if f.get("progressiveDownloadURL", "").endswith(".mp4")}}
+            for m in medias]
+
+
+def emission(t, qualite="360p"):
+    """Émission demandée (« de novembre », « d'octobre 2026 », sinon la plus récente), prête à télécharger :
+    {titre, url, octets, nom, qualite} ou None."""
+    from .texte import normaliser
+    emissions = emissions_mensuelles()
+    mois = re.search(r"\b(" + "|".join(MOIS) + r")\b", t)
+    if mois:
+        emissions = [e for e in emissions if mois.group(1) in normaliser(e["titre"])]
+    annee = re.search(r"\b(20\d\d)\b", t)
+    if annee:
+        emissions = [e for e in emissions if annee.group(1) in e["titre"]]
+    if not emissions:
+        return None
+    e = emissions[0]
+    qualite = qualite if qualite in e["fichiers"] else next((q for q in QUALITES if q in e["fichiers"]), None)
+    if not qualite:
+        return None
+    url, octets = e["fichiers"][qualite]
+    return {"titre": e["titre"], "url": url, "octets": octets, "nom": url.rsplit("/", 1)[-1], "qualite": qualite}

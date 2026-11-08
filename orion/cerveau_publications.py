@@ -195,3 +195,31 @@ class Publications:
         self.en_attente = telecharger_puis_lire
         return (f"Je n'ai pas encore « {pub['titre']} » dans tes documents. Je le télécharge "
                 f"({espace.mo(pub['octets'])}) pour te le lire ?"), None
+
+    def _emission(self, t):
+        """Émission vidéo du mois : déjà téléchargée → ouverte ; sinon téléchargement proposé (taille annoncée,
+        360p par défaut, 720p sur demande) ; site injoignable → vidéothèque ouverte à l'écran."""
+        from .brain import VIDEOS_MENSUELLES
+        self.derniere_origine = "bible"
+        haute = bool(re.search(r"\b(haute (?:qualite|definition)|hd|720)\b", t))
+        video = publications.emission(t, "720p" if haute else "360p")
+        if not video:
+            return None, lambda: (self.actions.ouvrir_lien(VIDEOS_MENSUELLES),
+                                  "Je t'ouvre la vidéothèque des émissions du mois.")[1]
+        dossier = dossiers.chemin(self.cfg) / "Vidéos"
+        if (dossier / video["nom"]).exists():
+            return None, lambda: (self.actions.ouvrir_lien((dossier / video["nom"]).as_uri()),
+                                  f"Je t'ouvre « {video['titre']} ».")[1]
+
+        def telecharger():
+            try:
+                with self._redaction(f"le téléchargement de « {video['titre']} »", "MP4"):
+                    chemin = publications.telecharger(video, dossier, self.signaler)
+            except OSError as e:
+                return f"Le téléchargement n'a pas abouti : {e}."
+            self.actions.ouvrir_lien(chemin.as_uri())
+            return f"Voilà « {video['titre']} », dans le dossier Vidéos de tes documents."
+        self.en_attente = telecharger
+        autre = "" if haute else " Dis « en haute qualité » pour la version 720p."
+        return (f"« {video['titre']} » fait {espace.mo(video['octets'])} en {video['qualite']}. "
+                f"Je la télécharge ?{autre}"), None
