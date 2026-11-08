@@ -20,12 +20,14 @@ import sys
 import tkinter as tk
 
 COULEURS = {  # (points, halo) — les transitions sont fondues
-    "veille": ("#4a7f99", "#08202b"),
-    "ecoute": ("#62f6ff", "#0e5c70"),
-    "reflexion": ("#c7a8ff", "#35226e"),
-    "parole": ("#bdfcff", "#11798c"),
-    "execution": ("#ffc46b", "#6e4000"),
+    "veille": ("#d6dbe1", "#2c3036"),     # au repos : gris perle
+    "ecoute": ("#4ff4ff", "#0c3f9a"),     # écoute : cyan sur halo bleu
+    "reflexion": ("#9fc2ff", "#1d2f73"),  # réfléchit : bleu pâle, entre écoute et action
+    "parole": ("#ffc93c", "#9e1414"),     # parle : doré, qui ondule vers le rouge (voir ROUGE_PAROLE)
+    "execution": ("#b77bff", "#40148c"),  # agit (téléchargement, installation…) : violet
 }
+ROUGE_PAROLE = "#ff5a3c"
+LARGEUR_CAR = {11: 8.2, 9: 6.8}  # largeur approchée d'un caractère Consolas (pixels), par taille de police
 CHAUD = "#ffd8a0"
 SEUIL_NOIR = 28  # sur 255 : en dessous, un pixel du visage est considéré comme du fond (transparent)
 FOND = "#01030a"
@@ -141,7 +143,7 @@ class Hologramme:
         self.etat, self.legende, self.t = "veille", cfg["nom"], 0.0
         self.coeur, self.halo = COULEURS["veille"]
         self.rassemble, self.eclat, self.flou = RASSEMBLEMENT["veille"], ECLAT["veille"], 0.0
-        self._legende_cible, self._lettres = "", 0
+        self._legende_cible, self._lettres, self._t_legende = "", 0, 0.0
         self.root = tk.Tk()
         self.root.title(cfg["nom"])
         self.root.configure(bg=FOND)
@@ -185,6 +187,12 @@ class Hologramme:
         self.trainees = {i: c.create_line(0, 0, 0, 0, fill=FOND) for i in range(0, len(self.tete), 3)}
         self.points = [c.create_oval(0, 0, 0, 0, outline="", fill=FOND) for _ in self.tete]
         self.balayage = c.create_line(0, 0, 0, 0, fill=FOND, dash=(2, 6))
+        # Dernière action menée : une ligne discrète en haut (défile si elle est trop longue)
+        self.action_texte, self._t_action = "", 0.0
+        # Personne reconnue pendant la conversation : en haut à gauche
+        self.personne_texte = ""
+        self.personne = c.create_text(8, 10, text="", anchor="w", fill="#ffffff", font=("Consolas", 9))
+        self.action = c.create_text(s / 2, 26, text="", fill="#ffffff", font=("Consolas", 9))
         self.texte = c.create_text(s / 2, s + 18, text="", fill="#ffffff", font=("Consolas", 11))
         # Tâche en cours : texte en petit et barre de progression (masqués quand rien n'est en cours)
         self.statut_texte, self.statut_fraction = "", None
@@ -243,13 +251,30 @@ class Hologramme:
         est connue. progression("") efface tout."""
         self.statut_texte, self.statut_fraction = texte, fraction
 
+    def interlocuteur(self, nom):
+        """Personne reconnue (vide : personne). Appelable depuis n'importe quel thread."""
+        self.personne_texte = f"● {nom}" if nom else ""
+
+    def derniere_action(self, texte):
+        """Appelable depuis n'importe quel thread."""
+        self.action_texte, self._t_action = texte, self.t
+
     def changer(self, etat, legende=None):
         """Appelable depuis n'importe quel thread."""
         if etat != self.etat:
             self.flou = 1.0  # brouillage de transition
         self.etat = etat
         if legende is not None:
-            self.legende = legende[:60]
+            self.legende = legende
+
+    def _defiler(self, texte, taille_police, depart=0.0):
+        """Texte trop long pour la fenêtre : il défile en boucle, comme un bandeau (pause au début)."""
+        place = int(self.taille * 0.92 / LARGEUR_CAR[taille_police])
+        if len(texte) <= place:
+            return texte
+        boucle = texte + "   •   "
+        pas = max(0, int((self.t - depart - 1.5) * 6)) % len(boucle)
+        return (boucle * 2)[pas:pas + place]
 
     @staticmethod
     def ouvrir_panneau():
@@ -293,6 +318,8 @@ class Hologramme:
         else:
             cx, cy = s * 0.52, s * 0.47
         cible_point, cible_halo = COULEURS[etat]
+        if etat == "parole":  # dégradé doré ↔ rouge qui respire pendant qu'Orion parle
+            cible_point = melange(cible_point, ROUGE_PAROLE, 0.5 + 0.5 * math.sin(t * 2.2))
         self.coeur = melange(self.coeur, cible_point, 0.12)
         self.halo = melange(self.halo, cible_halo, 0.12)
         self.rassemble += (RASSEMBLEMENT[etat] - self.rassemble) * 0.08
@@ -425,14 +452,21 @@ class Hologramme:
 
         # Légende qui s'écrit lettre par lettre
         if self.legende != self._legende_cible:
-            self._legende_cible, self._lettres = self.legende, 0
+            self._legende_cible, self._lettres, self._t_legende = self.legende, 0, t
         self._lettres = min(len(self.legende), self._lettres + 2)
         curseur = "▌" if self._lettres < len(self.legende) or int(t * 2) % 2 else " "
-        c.itemconfigure(self.texte, text=self.legende[:self._lettres].upper() + curseur,
-                        fill=melange(self.coeur, "#ffffff", 0.2))
+        texte = self.legende[:self._lettres].upper() + curseur
+        if self._lettres >= len(self.legende):  # écrit en entier : défile s'il dépasse la fenêtre
+            texte = self._defiler(self.legende.upper(), 11, self._t_legende + len(self.legende) * 0.02)
+        c.itemconfigure(self.texte, text=texte, fill=melange(self.coeur, "#ffffff", 0.2))
+
+        c.itemconfigure(self.personne, text=self.personne_texte, fill=melange(FOND, self.coeur, 0.8))
+        c.itemconfigure(self.action, text=self._defiler(self.action_texte, 9, self._t_action),
+                        fill=melange(FOND, COULEURS["veille"][0], 0.55))
 
         # Tâche en cours
-        c.itemconfigure(self.statut, text=self.statut_texte, fill=melange(FOND, self.coeur, 0.85))
+        c.itemconfigure(self.statut, text=self._defiler(self.statut_texte, 9),
+                        fill=melange(FOND, self.coeur, 0.85))
         if self.statut_fraction is None:
             c.itemconfigure(self.barre_fond, state="hidden")
             c.itemconfigure(self.barre, state="hidden")
