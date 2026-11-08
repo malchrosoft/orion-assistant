@@ -25,7 +25,7 @@ from . import knowledge
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger
-from .texte import est_echo, normaliser, sans_accents, trouver_eveil, trouver_nom
+from .texte import est_echo, normaliser, sans_accents, trouver_eveil
 
 
 def mode_texte(cfg):
@@ -473,7 +473,6 @@ def boucle_vocale(cfg, holo):
                     and not trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])[0]:
                 print(f"[écho ignoré] {texte}", flush=True)
                 continue
-            t = normaliser(texte)
             nomme, sans_nom = trouver_eveil(texte, cfg["mots_eveil"], cfg["formules_eveil"])
             print(f"[entendu{' (éveillé)' if eveille else ''}{' · formule reconnue' if nomme else ''} · confiance "
                   f"{oreille.confiance:.2f}] {texte}", flush=True)

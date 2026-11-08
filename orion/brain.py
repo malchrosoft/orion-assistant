@@ -2,21 +2,20 @@
 # SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Compréhension des demandes : règles simples + calcul + base de savoir (+ LLM local optionnel)."""
 import ast
-import contextlib
 import datetime
 import json
 import math
 import operator
-import os
 import random
 import re
-import subprocess
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 from . import bible, bibliotheque, dossiers, espace, export, knowledge, meteo, minuteur, personnes, publications, systeme, web
+from .cerveau_documents import Documents
+from .cerveau_publications import Publications
 from .conversation import Conversation
 from .persona import presentation
 from .texte import chiffres, normaliser, sans_accents
@@ -88,7 +87,7 @@ def calculer(t):
     return str(int(r) if r == int(r) else r).replace(".", ",")
 
 
-class Cerveau:
+class Cerveau(Publications, Documents):
     def __init__(self, cfg, actions):
         self.cfg, self.actions = cfg, actions
         self.derniere_fiche = None
@@ -317,45 +316,6 @@ class Cerveau:
                 return texte
             return None, tache_adaptee
         return self._finaliser(prefixe + reponse, phrase, locuteur), None
-
-    def _fiche_pdf(self, sujet, renvois, cle=None):
-        """Fiche PDF : base locale d'abord ; sinon Wikipédia, après accord (comme pour les réponses orales)."""
-        from . import document
-        a = self.actions
-        fiche = knowledge.chercher(sujet)
-
-        def produire(f):
-            try:
-                dossier = dossiers.chemin(self.cfg, cle)
-                with self._redaction(f"la fiche sur {f['titre']}") as mesure:
-                    chemin = document.generer(f, renvois, dossier)
-            except OSError as e:
-                return f"Je n'arrive pas à enregistrer la fiche : {e}."
-            return self._document_pret(chemin, "la fiche", mesure["duree"])
-        if fiche:
-            if any(s["niveau"] == 0 for s in fiche["sources"] if s["consulte"]):
-                fiche["avertissement"] = ("Attention : cette fiche provient d'une page internet non vérifiée. "
-                                          "Recoupez-la avec une source sûre.")
-            fiche["lectures"] = [s for s in fiche["sources"] if s["portee"] == "domaine"]
-            fiche["sources"] = [s for s in fiche["sources"] if s["portee"] == "fiche"]
-            return None, lambda: produire(fiche)
-
-        def depuis_wikipedia():
-            try:
-                article = web.wikipedia(sujet)
-            except Exception:
-                return "Je n'arrive pas à joindre ma base externe. Vérifie la connexion internet."
-            if not article:
-                return "Je n'ai rien trouvé de fiable sur ce sujet."
-            return produire({"titre": article["titre"], "contenu": article["contenu"], "domaine": "Wikipédia",
-                             "avertissement": "Extrait de Wikipédia, encyclopédie collaborative (CC BY-SA 4.0) : "
-                                              "vérifiez les points importants.",
-                             "sources": [{"titre": f"Wikipédia, article « {article['titre']} »", "url": article["url"],
-                                          "niveau": 1, "consulte": knowledge.aujourdhui()}]})
-        if self._libre("wikipedia"):
-            return None, depuis_wikipedia
-        self.en_attente = depuis_wikipedia
-        return "Je n'ai pas ce sujet dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
 
     def _installer_manquants(self, locuteur):
         """À la voix : annonce la taille et demande l'accord ; la limite d'espace ne se change pas à l'oral."""
@@ -800,188 +760,6 @@ class Cerveau:
             return "Je n'arrive pas à deviner ta ville. Dis-moi laquelle ?"
         return f"D'après ta connexion, tu es vers {ville}. " + self._meteo(normaliser(ville), demande, retenir=True)
 
-    def _verset(self, code, t, lien):
-        """Lit le verset dans la Bible téléchargée ; sinon propose de la télécharger ; sinon l'ouvre."""
-        livre, chapitre, debut = bible.LIVRES[int(code[:2]) - 1], int(code[2:5]), int(code[5:])
-        # « 3 à 5 », « 3 et 4 » (le « et » disparaît à la conversion des nombres : « 21 3 4 »)
-        m = re.search(rf"\b{chapitre}\D+{debut}\s*(?:a|au|jusqu a|et)?\s*(?:versets?\s*)?(\d+)\b", t)
-        fin = int(m.group(1)) if m and int(m.group(1)) > debut else None
-        nom = f"{bible.nom_livre(livre)} {chapitre}, {'versets' if fin else 'verset'} {debut}{f' à {fin}' if fin else ''}"
-        self.derniere_origine = "bible"
-        epub = publications.fichier_local("nwt", self._dossiers_publications())
-        texte = publications.verset(epub, livre, chapitre, debut, fin) if epub else None
-        if texte:
-            self._citer(epub, nom, lien)
-            return f"{nom} : {texte}", None
-
-        def ouvrir():
-            self.actions.ouvrir_lien(lien)
-            return "Je n'ai pas trouvé ce verset dans la Bible téléchargée : je te l'affiche à l'écran."
-        pub = None if epub else publications.chercher("nwt")
-        if not pub:
-            return None, ouvrir
-
-        def telecharger_puis_lire():
-            try:
-                publications.telecharger(pub, dossiers.chemin(self.cfg))
-            except OSError:
-                return ouvrir()
-            return self._verset(code, t, lien)[0] or ouvrir()
-        self.en_attente = telecharger_puis_lire
-        return (f"Je n'ai pas encore la Bible dans tes documents. Je la télécharge "
-                f"({espace.mo(pub['octets'])}) pour te lire ce verset ?"), None
-
-    def _chercher_publications(self, sujet, t):
-        """Lit les deux passages les plus proches du sujet (Bible, ou textes du jour si on les demande)."""
-        self.derniere_origine = "bible"
-        publications.indexer(self._dossiers_publications())  # rapide : seuls les nouveaux fichiers sont lus
-        source = ("es" if re.search(r"\btextes? du jour\b", t) else
-                  "nwt" if re.search(r"\b(bible|versets?)\b", t) else None)
-        trouves = publications.rechercher(sujet, source)
-        if not trouves:
-            return (f"Je ne trouve rien sur {sujet} dans tes publications téléchargées. Pour la Bible, "
-                    "demande-moi « télécharge la Bible »."), None
-        if source == "es":
-            lieu, texte, _ = trouves[0]
-            self._citer_passages(trouves[:1])
-            texte = re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", "")
-            return f"Le {lieu[len('texte du '):]} en parlait : {texte}", None
-        self._citer_passages(trouves[:2])
-        return " ".join(f"{lieu} : {texte}" for lieu, texte, _ in trouves[:2]), None
-
-    def _telecharger_lien(self, lien):
-        """Lien copié : publication du site de l'éditeur (EPUB proposé, retenu par son titre), ou tout autre
-        document (URL internet ou intranet, fichier de l'ordinateur) ajouté à la bibliothèque et indexé."""
-        lien = lien.strip().strip('"')
-        d = publications.depuis_lien(lien) if "jw.org" in lien else None
-        if not d and (re.match(r"(https?|file)://", lien) or Path(lien).expanduser().is_file()):
-            def ajouter():
-                try:
-                    with self._redaction("l'index du document", "INDEX"):
-                        nom, n = bibliotheque.ajouter(lien, dossiers.chemin(self.cfg) / "Bibliothèque")
-                except Exception as e:
-                    return f"Je n'arrive pas à lire ce document : {e}"
-                return (f"J'ai ajouté « {nom} » à ma bibliothèque : {n} passage{'s' if n > 1 else ''} indexé"
-                        f"{'s' if n > 1 else ''}. Pose-moi tes questions ; je citerai ce document, comme une "
-                        "source non vérifiée.")
-            return None, ajouter
-        if not d:
-            return ("Je ne trouve pas de lien de téléchargement jw.org copié. Sur la page de la publication, "
-                    "ouvre la fenêtre de téléchargement et copie le lien de l'EPUB."), None
-        pub = publications.chercher(*d)
-        if not pub:
-            return "Cette publication n'existe pas en EPUB en français.", None
-        publications.retenir(pub, *d)
-        return self._proposer_publications([pub])
-
-    def _proposer_publications(self, pubs, cle=None, ouvrir=True, puis=None, question=None):
-        """Annonce la taille des EPUB, puis (sur « oui ») les télécharge, les ouvre ou enchaîne sur `puis`."""
-        titres = " et ".join(f"« {p['titre']} »" for p in pubs)
-        taille = espace.mo(sum(p["octets"] for p in pubs))
-
-        def telecharger():
-            try:
-                for pub in pubs:
-                    chemin = publications.telecharger(pub, dossiers.chemin(self.cfg, cle))
-                    if ouvrir:
-                        self.actions.ouvrir_lien(chemin.as_uri())
-            except OSError as e:
-                return f"Le téléchargement n'a pas abouti : {e}."
-            self.derniere_origine = "bible"
-            return puis() if puis else f"Voilà {titres}, dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
-        self.en_attente = telecharger
-        if question:
-            return question.format(titres=titres, taille=taille), None
-        return (f"{titres} {'font' if len(pubs) > 1 else 'fait'} {taille}"
-                f"{' en tout' if len(pubs) > 1 else ''}. Je {'les' if len(pubs) > 1 else 'le'} télécharge ?"), None
-
-    def _publication_de_la_semaine(self, date, t, lien):
-        """Réunion de semaine → cahier Vie et ministère ; week-end → Tour de Garde d'étude (parue deux mois
-        avant). Ouvre le fichier déjà téléchargé, sinon propose de le télécharger ; la page web en dernier."""
-        if re.search(r"\b(tour de garde|week end|weekend|dimanche|samedi|etude de la tour)\b", t):
-            mois = date.replace(day=1) - datetime.timedelta(days=1)
-            mois = mois.replace(day=1) - datetime.timedelta(days=1)  # deux mois plus tôt
-            code, numero = "w", f"{mois.year}{mois.month:02d}"
-        else:
-            code, numero = "mwb", f"{date.year}{date.month - (date.month + 1) % 2:02d}"
-        self.derniere_origine = "bible"
-        ouvrir = bool(re.search(r"\b(ouvre|montre|affiche)\b", t))
-
-        def lire_ou_ouvrir(chemin):
-            if code == "mwb" and not ouvrir:  # le programme de la semaine, lu à voix haute
-                r = publications.programme_semaine(chemin, date)
-                if r:
-                    self._citer(chemin, f"semaine du {r[0]}", lien)
-                    parties = publications.partie_du_programme(r[1], t)
-                    if parties is not r[1]:  # « le thème des joyaux », « les cantiques », « la lecture »…
-                        return f"Semaine du {r[0]}. " + ". ".join(parties) + "."
-                    return f"Programme de la semaine du {r[0]}. " + ". ".join(r[1]) + "."
-            self.actions.ouvrir_lien(chemin.as_uri())
-            return "Je t'ouvre " + ("le cahier Vie et ministère." if code == "mwb" else "La Tour de Garde d'étude.")
-        nom = f"{code}_F_{numero}.epub"
-        for dossier in self._dossiers_publications():  # déjà téléchargé : rien à demander au site
-            if (dossier / nom).exists():
-                return lire_ou_ouvrir(dossier / nom), None
-        pub = publications.chercher(code, numero)
-        if not pub:
-            self.actions.ouvrir_lien(lien)
-            return "Je ne trouve pas encore la publication de cette semaine : je t'affiche la page.", None
-        return self._proposer_publications([pub], ouvrir=False, puis=lambda: lire_ou_ouvrir(
-            next(d / pub["nom"] for d in self._dossiers_publications() if (d / pub["nom"]).exists())))
-
-    def _citer(self, epub, lieu, url=None, reference=None):
-        """Note la publication d'où vient l'information (et sa source d'origine), pour les documents générés."""
-        self.sources_reponse.append({"titre": f"{publications.titre_epub(epub)}, {lieu}", "url": url,
-                                     "niveau": 2, "consulte": knowledge.aujourdhui(), "portee": "fiche"})
-        if reference:
-            self.sources_reponse.append({"titre": f"Source d'origine : {publications.origine(reference)}",
-                                         "url": None, "niveau": 2, "consulte": knowledge.aujourdhui(),
-                                         "portee": "fiche"})
-
-    def _citer_passages(self, trouves):
-        for lieu, _, publication in trouves:
-            epub = next((d / f"{publication}.epub" for d in self._dossiers_publications()
-                         if (d / f"{publication}.epub").exists()), None)
-            if epub:
-                code = bible.reference(normaliser(lieu.replace(":", " "))) if publication.startswith("nwt") else None
-                self._citer(epub, lieu, f"https://www.jw.org/finder?wtlocale=F&bible={code}" if code else None)
-
-    def _dossiers_publications(self):
-        return [Path(os.path.expanduser(c)) for c in dossiers.liste(self.cfg).values()]
-
-    def _texte_du_jour(self, date, lien):
-        """Lit le texte du jour dans « Examinons les Écritures » téléchargé ; s'il manque, propose de le
-        télécharger ; la page web n'est ouverte qu'en dernier recours."""
-        code = f"es{date.year % 100:02d}"
-        epub = publications.fichier_local(code, self._dossiers_publications())
-        self.derniere_origine = "bible"
-        if epub:
-            r = publications.texte_du_jour(epub, date)
-            if r:
-                titre, verset, commentaire = r
-                reference = re.search(r"\b[a-z]{1,3}\d{2}\.\d{2}\b.*$", commentaire)
-                self._citer(epub, titre[0].lower() + titre[1:], lien, reference.group(0) if reference else None)
-                commentaire = re.sub(r"\s*\b[a-z]{1,3}\d{2}\.\d{2}\b.*$", "", commentaire)  # référence finale
-                texte = f"Texte du {titre[0].lower() + titre[1:]}. {verset} {commentaire}"
-                return re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", ""), None
-        pub = publications.chercher(code)
-
-        def ouvrir():
-            self.actions.ouvrir_lien(lien)
-            return "Je n'ai pas le texte dans mes publications : je te l'affiche à l'écran."
-        if not pub:
-            return None, ouvrir
-
-        def telecharger_puis_lire():
-            try:
-                publications.telecharger(pub, dossiers.chemin(self.cfg))
-            except OSError:
-                return ouvrir()
-            return self._texte_du_jour(date, lien)[0] or ouvrir()
-        self.en_attente = telecharger_puis_lire
-        return (f"Je n'ai pas encore « {pub['titre']} » dans tes documents. Je le télécharge "
-                f"({espace.mo(pub['octets'])}) pour te le lire ?"), None
-
     def _ordinateur(self, t):
         """Questions sur l'ordinateur local, sans rien modifier ; None si la phrase n'en est pas une."""
         if self.derniers_fichiers and (m := re.search(r"\bouvre (?:le |la )?(premier|1|deuxieme|second|2|"
@@ -1009,83 +787,6 @@ class Cerveau:
                      r"machine)\b|\bquel (?:systeme|processeur)\b|\bcombien de (?:memoire|ram)\b", t):
             return systeme.infos(), None
         return None
-
-    def _geants(self, sujet):
-        """Propose la recherche (internet, avec accord), puis dit la synthèse et ouvre la fiche PDF."""
-        from . import document, geants
-
-        def chercher():
-            r = geants.rechercher(sujet, self.conversation, self.signaler)
-            self.derniere_origine = "geants"
-            if r["lignee"] or r["wikipedia"]:
-                try:
-                    with self._redaction("la fiche de recherche") as mesure:
-                        chemin = document.generer(geants.fiche(r), True, dossiers.chemin(self.cfg))
-                    return geants.a_dire(r).replace(" Je t'ai préparé une fiche avec la lignée complète et les "
-                                                    "sources.", "") + " " + self._document_pret(
-                        chemin, "la fiche avec la lignée et les sources", mesure["duree"])
-                except OSError:
-                    pass
-            self.signaler("")
-            return geants.a_dire(r)
-        if self._libre("geants"):
-            return None, chercher
-        self.en_attente = chercher
-        return (f"Je vais chercher comment d'autres ont déjà résolu « {sujet} », dans des sources ouvertes en "
-                "ligne : Wikipédia et le catalogue scientifique OpenAlex. J'y vais ?"), None
-
-    @contextlib.contextmanager
-    def _redaction(self, libelle, format_="PDF"):
-        """Pendant qu'Orion rédige : il l'annonce, et une feuille s'écrit sur l'hologramme (1,5 s au moins,
-        même si le fichier est prêt plus vite, pour qu'on voie ce qu'il fait)."""
-        debut, mesure = time.monotonic(), {}
-        self.symboliser(format_)
-        self.signaler(f"Je rédige {libelle}…")
-        try:
-            yield mesure
-        finally:
-            mesure["duree"] = time.monotonic() - debut  # temps réel de rédaction, avant l'attente d'affichage
-            time.sleep(max(0.0, 1.5 - mesure["duree"]))
-            self.symboliser(None)
-            self.signaler("")
-
-    def _document_pret(self, chemin, libelle, duree):
-        """Annonce le document et propose de l'ouvrir ; de temps en temps, Orion se vante de sa rapidité."""
-        dossier = "ton dossier personnel" if chemin.parent == Path.home() else f"le dossier {chemin.parent.name}"
-        ms = round(duree * 1000)
-        temps = ("moins d'une milliseconde" if ms < 1 else f"{ms} milliseconde{'s' if ms > 1 else ''}" if duree < 1
-                 else f"{duree:.1f} secondes".replace(".", ","))
-        f = libelle.startswith("la ")  # « la fiche », « la page web » : accords au féminin
-        e, il, Libelle = ("e" if f else ""), ("Elle" if f else "Il"), libelle[:1].upper() + libelle[1:]
-        if random.random() < 0.35:
-            texte = random.choice([
-                f"Et voilà : {libelle} rédigé{e} en {temps}, pas mal, non ? {il} s'appelle {chemin.name}, dans {dossier}.",
-                f"{temps[:1].upper() + temps[1:]} chrono pour {libelle} ! C'est {chemin.name}, rangé{e} dans {dossier}.",
-                f"Je n'ai pas traîné : {temps}. {Libelle} s'appelle {chemin.name}, dans {dossier}."])
-        else:
-            texte = f"{Libelle} est prêt{e} : {chemin.name}, dans {dossier}."
-        self.en_attente = lambda: (self.actions.ouvrir_lien(chemin.as_uri()), "Je te l'ouvre.")[1]
-        return texte + " Je l'ouvre ?"
-
-    def _exporter(self, format_, cle=None):
-        """Enregistre la dernière réponse dans le format demandé, puis l'ouvre."""
-        r = self.derniere_reponse
-        if not r:
-            return "Pose-moi d'abord une question : j'en ferai ensuite un document.", None
-        noms = {"docx": "le document Word", "md": "le fichier Markdown", "html": "la page web", "pdf": "le PDF",
-                "pdf_pro": "le rapport PDF"}
-
-        def creer():
-            titre = re.sub(r"[?!.]+$", "", r["question"]).strip()
-            doc = {"titre": titre[:1].upper() + titre[1:], **r}
-            try:
-                with self._redaction(noms[format_], "PDF PRO" if format_ == "pdf_pro" else format_.upper()) as mesure:
-                    chemin = export.generer(doc, format_, dossiers.chemin(self.cfg, cle))
-            except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
-                return f"Je n'arrive pas à enregistrer le document : {e}."
-            self.export_en_cours = True
-            return self._document_pret(chemin, noms[format_], mesure["duree"])
-        return None, creer
 
     def _blague(self):
         from . import blagues

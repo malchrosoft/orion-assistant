@@ -455,3 +455,8 @@ def partie_du_programme(parties, t):
                         return [suite[0], suite[1]]  # « le thème des joyaux » : la rubrique et son premier sujet
                     return suite
     return parties
+
+
+def sans_coupures(texte):
+    """Texte cité, prêt à être lu : « [Dieu] ne s'est pas […] retenu » → « Dieu ne s'est pas retenu »."""
+    return re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", "")
