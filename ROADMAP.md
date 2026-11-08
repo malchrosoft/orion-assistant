@@ -87,20 +87,15 @@ sans raison, source citée.
     volume) et touches multimédia du clavier, qui ne passent pas par le micro ;
   - baisser automatiquement le volume de la musique pendant qu'Orion parle, puis le rétablir.
 
-### Fenêtres
-- **Une fenêtre maîtresse** : l'hologramme pilote les autres fenêtres d'Orion. Aujourd'hui, chaque double-clic
-  lance un nouveau panneau (programme séparé), et les fenêtres secondaires (comparer les voix, mémoire)
-  peuvent se multiplier. À faire :
-  - un seul panneau à la fois (instance unique : un second double-clic ramène le panneau ouvert au premier plan) ;
-  - les fenêtres secondaires rattachées au panneau (une seule de chaque sorte, fermées avec lui) ;
-  - quitter l'hologramme ferme tout ; position des fenêtres retenue d'une fois sur l'autre.
-
 ### Distribution
 - **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée ;
   icône macOS (.icns) et Linux (.desktop) à partir du nouveau logo.
 
 ## Fait récemment
 
+- Fenêtre maîtresse : un seul panneau à la fois (un second lancement le ramène au premier plan),
+  fenêtres secondaires uniques et fermées avec le panneau, quitter l'hologramme ferme tout, position
+  des fenêtres retenue (et ramenée dans l'écran).
 - Mode silencieux : réponses écrites sur l'hologramme, sans voix ni bip d'écoute (voix, menu, panneau).
 - Émission vidéo du mois téléchargée à la demande (MP4 de la vidéothèque publique, taille annoncée,
   360p ou 720p), rangée dans Documents/Orion/Vidéos.
