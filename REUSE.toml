@@ -4,6 +4,6 @@ SPDX-PackageDownloadLocation = "https://github.com/malchrosoft/orion-assistant"
 
 # Fichiers sans commentaire possible (données JSON) et documentation
 [[annotations]]
-path = ["orion/data/**", "*.md", "requirements*.txt", ".gitignore", "REUSE.toml", "package.json"]
+path = ["orion/data/**", "docs/**", "*.md", "requirements*.txt", ".gitignore", "REUSE.toml", "package.json"]
 SPDX-FileCopyrightText = "2026 Aymeric Malchrowicz"
 SPDX-License-Identifier = "LicenseRef-PolyForm-Strict-1.0.0"
