@@ -26,7 +26,7 @@ sep = ";" if os.name == "nt" else ":"
 
 # Paquets embarqués dont on conserve les métadonnées (licences incluses)
 EMBARQUES = ["vosk", "sounddevice", "pyttsx3", "cffi", "requests", "tqdm", "srt", "websockets", "certifi",
-             "urllib3", "idna", "charset-normalizer", "ctranslate2", "sentencepiece", "numpy", "PyYAML"]
+             "urllib3", "idna", "charset-normalizer", "ctranslate2", "sentencepiece", "numpy", "PyYAML", "pypdf"]
 if sys.platform == "win32":
     EMBARQUES += ["comtypes", "pywin32"]
 
@@ -42,6 +42,8 @@ options = [
     "--hidden-import", "pyttsx3.drivers", "--hidden-import", "pyttsx3.drivers.sapi5",
     "--hidden-import", "pyttsx3.drivers.nsss", "--hidden-import", "pyttsx3.drivers.espeak",
 ]
+if sys.platform == "win32":  # icône de l'application (logo d'Orion)
+    options += ["--icon", str(ICI / "orion" / "data" / "logos" / "orion.ico")]
 if sys.platform == "darwin":
     options += ["--osx-bundle-identifier", "fr.malchrosoft.orion"]
 for paquet in EMBARQUES:

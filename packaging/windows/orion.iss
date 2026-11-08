@@ -21,6 +21,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 LicenseFile=..\..\LICENSE
+SetupIconFile=..\..\orion\data\logos\orion.ico
 OutputDir=..\..\dist
 OutputBaseFilename=Orion-Setup-{#Version}
 Compression=lzma2
