@@ -67,8 +67,11 @@ class Panneau:
         onglets.pack(fill="both", expand=True)
         for titre, construire in (("Discussion", self._discussion), ("Savoir", self._savoir),
                                   ("Voix", self._voix), ("Langues", self._langues), ("Famille", self._famille), ("Réglages", self._reglages)):
-            cadre = ttk.Frame(onglets, padding=8)
-            onglets.add(cadre, text=titre)
+            if titre == "Discussion":  # le journal de discussion a déjà sa propre zone défilante
+                cadre = ttk.Frame(onglets, padding=8)
+                onglets.add(cadre, text=titre)
+            else:
+                cadre = self._onglet_defilant(onglets, titre)
             construire(cadre)
         bas = ttk.Frame(self.root)
         bas.pack(pady=6)
@@ -76,6 +79,33 @@ class Panneau:
         ttk.Button(bas, text=f"▶ Lancer {self.cfg['nom']} (voix + hologramme)",
                    command=lambda: subprocess.Popen(lancer)).pack(side="left", padx=4)
         ttk.Button(bas, text="Crédits (PDF)", command=self._credits_pdf).pack(side="left", padx=4)
+        ttk.Button(bas, text="Installer ce qui manque…", command=lambda: self._installer_composants(
+            self._manquants())).pack(side="left", padx=4)
+        self.etat_installation = tk.StringVar()
+        ttk.Label(self.root, textvariable=self.etat_installation, foreground=ACCENT).pack()
+
+    def _onglet_defilant(self, onglets, titre):
+        """Onglet avec barre de défilement verticale et molette (Windows, macOS, Linux)."""
+        conteneur = ttk.Frame(onglets)
+        onglets.add(conteneur, text=titre)
+        toile = tk.Canvas(conteneur, bg=FOND, highlightthickness=0)
+        barre = ttk.Scrollbar(conteneur, orient="vertical", command=toile.yview)
+        interieur = ttk.Frame(toile, padding=8)
+        fenetre = toile.create_window((0, 0), window=interieur, anchor="nw")
+        interieur.bind("<Configure>", lambda e: toile.configure(scrollregion=toile.bbox("all")))
+        toile.bind("<Configure>", lambda e: toile.itemconfigure(fenetre, width=e.width))
+        toile.configure(yscrollcommand=barre.set)
+        toile.pack(side="left", fill="both", expand=True)
+        barre.pack(side="right", fill="y")
+
+        def molette(e):
+            if toile.winfo_ismapped() and interieur.winfo_height() > toile.winfo_height():
+                pas = -1 if (e.num == 4 or e.delta > 0) else 1
+                toile.yview_scroll(pas if abs(e.delta) < 120 else pas * max(1, abs(e.delta) // 120), "units")
+        # bind_all : la molette fonctionne même au-dessus des champs ; seul l'onglet visible défile
+        for evt in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.root.bind_all(evt, molette, add="+")
+        return interieur
 
     # --- Discussion -------------------------------------------------------------
     def _discussion(self, f):
@@ -220,6 +250,8 @@ class Panneau:
         ttk.Label(f, text="Orion comprend toujours le français ; seule sa voix change de langue.",
                   foreground=DISCRET).pack(anchor="w")
 
+        self._section_piper(f)
+
         texte, liens = self.AIDE_VOIX.get(systeme, self.AIDE_VOIX["Linux"])
         aide = ttk.LabelFrame(f, text="Il manque une voix ? Comment en installer une", padding=6)
         aide.pack(fill="x", pady=6)
@@ -230,6 +262,82 @@ class Panneau:
             ttk.Button(rangee, text=libelle, command=lambda c=cible: self._ouvrir_systeme(c)).pack(side="left")
         ttk.Button(rangee, text="Rechercher sur internet", command=self._rechercher_voix).pack(side="left")
         self._rafraichir_voix_systeme()
+
+    def _section_piper(self, f):
+        """Voix naturelles hors ligne (Piper), téléchargées à la demande."""
+        from . import piper
+        cadre = ttk.LabelFrame(f, text="Voix naturelles hors ligne (voix Piper) — recommandé", padding=6)
+        cadre.pack(fill="x", pady=6)
+        self.choix_piper = tk.StringVar(value=self.cfg.get("voix_piper") or "siwis")
+        for i, (cle, v) in enumerate(piper.VOIX.items()):
+            etat = "installée" if piper.installee(cle) else "à télécharger"
+            ttk.Radiobutton(cadre, text=f"{v['nom']} · {v['licence']} · {etat}", value=cle,
+                            variable=self.choix_piper).grid(row=i, column=0, columnspan=4, sticky="w")
+        rangee = ttk.Frame(cadre)
+        rangee.grid(row=len(piper.VOIX), column=0, columnspan=4, sticky="w", pady=4)
+        self.etat_piper = tk.StringVar(value="Voix utilisée : " + (piper.VOIX[self.cfg["voix_piper"]]["nom"]
+                                       if self.cfg.get("voix_piper") in piper.VOIX else "voix du système"))
+        ttk.Button(rangee, text="Installer…", command=self._installer_piper).pack(side="left")
+        ttk.Button(rangee, text="Utiliser", command=self._utiliser_piper).pack(side="left")
+        ttk.Button(rangee, text="▶ Écouter", command=self._ecouter_piper).pack(side="left")
+        ttk.Button(rangee, text="Revenir à la voix du système", command=self._voix_systeme).pack(side="left")
+        ttk.Label(cadre, textvariable=self.etat_piper, foreground=ACCENT).grid(row=len(piper.VOIX) + 1, column=0,
+                                                                               columnspan=4, sticky="w")
+
+    def _installer_piper(self):
+        from . import espace, piper
+        cle = self.choix_piper.get()
+        if piper.installee(cle):
+            return self.etat_piper.set("Cette voix est déjà installée.")
+        self.etat_piper.set("Calcul de l'espace nécessaire…")
+
+        def estimer():
+            try:
+                lignes = piper.estimer(cle)
+            except Exception as e:
+                return self.root.after(0, lambda: self.etat_piper.set(f"Impossible d'estimer (internet ?) : {e}"))
+            total = sum(o for _, o in lignes)
+            detail = "\n".join(f"• {l} : {o / 1e6:.0f} Mo" for l, o in lignes)
+
+            def confirmer():
+                texte = (f"Installer la voix « {piper.VOIX[cle]['nom']} » occupera environ {total / 1e6:.0f} Mo :\n\n"
+                         f"{detail}\n\nLicence de la voix : {piper.VOIX[cle]['licence']}. Le moteur sherpa-onnx (Apache 2.0) "
+                         "est téléchargé depuis sa page officielle et reste un programme séparé.\n\nContinuer ?")
+                if not messagebox.askokcancel("Voix naturelle", texte):
+                    return self.etat_piper.set("")
+
+                def installer():
+                    try:
+                        piper.installer(cle, lambda m: self.root.after(0, lambda: self.etat_piper.set(m)))
+                    except Exception as e:
+                        self.root.after(0, lambda: self.etat_piper.set(f"Échec : {e}"))
+                threading.Thread(target=installer, daemon=True).start()
+            self.root.after(0, confirmer)
+        threading.Thread(target=estimer, daemon=True).start()
+
+    def _utiliser_piper(self):
+        from . import piper
+        cle = self.choix_piper.get()
+        if not piper.installee(cle):
+            return self.etat_piper.set("Installez d'abord cette voix.")
+        self.cfg.update(voix_piper=cle, genre=piper.VOIX[cle]["genre"])
+        sauver(self.cfg)
+        self.etat_piper.set(f"Voix utilisée : {piper.VOIX[cle]['nom']}. Relancez Orion pour l'entendre.")
+
+    def _voix_systeme(self):
+        self.cfg["voix_piper"] = ""
+        sauver(self.cfg)
+        self.etat_piper.set("Voix utilisée : voix du système.")
+
+    def _ecouter_piper(self):
+        from . import piper
+        cle = self.choix_piper.get()
+        if not piper.installee(cle):
+            return self.etat_piper.set("Installez d'abord cette voix.")
+        bouche = Bouche(dict(self.cfg, voix_piper=cle, langue="fr"))
+        cfg_essai = dict(self.cfg, genre=piper.VOIX[cle]["genre"])
+        threading.Thread(target=lambda: (bouche.dire(salutation(cfg_essai) + " Voici ma voix naturelle."),
+                                         bouche.fermer()), daemon=True).start()
 
     def _code_langue(self):
         return next(c for c, n in LANGUES.items() if n == self.langue.get())
@@ -464,14 +572,11 @@ class Panneau:
             "aimp_exe": tk.StringVar(value=c["aimp_exe"]),
             "dossier_musique": tk.StringVar(value=c["dossier_musique"]),
             "seuil_locuteur": tk.DoubleVar(value=c["seuil_locuteur"]),
-            "llm_actif": tk.BooleanVar(value=c["llm"]["actif"]),
-            "llm_modele": tk.StringVar(value=c["llm"]["modele"]),
             "transparent": tk.BooleanVar(value=c["hologramme"]["transparent"]),
         }
         lignes = [("Nom de l'assistant", "nom"), ("Prononciation du nom (facultatif, ex. Oh-ri-on)", "nom_phonetique"),
                   ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
-                  ("Chemin d'AIMP", "aimp_exe"), ("Dossier de musique", "dossier_musique"),
-                  ("Modèle Ollama", "llm_modele")]
+                  ("Chemin d'AIMP", "aimp_exe"), ("Dossier de musique", "dossier_musique")]
         for i, (lib, cle) in enumerate(lignes):
             ttk.Label(f, text=lib).grid(row=i, column=0, sticky="w", pady=2)
             ttk.Entry(f, textvariable=self.champs[cle], width=50).grid(row=i, column=1, sticky="we")
@@ -485,8 +590,6 @@ class Panneau:
         ttk.Scale(f, from_=0.3, to=0.8, variable=self.champs["seuil_locuteur"]).grid(row=n, column=1, sticky="we")
         ttk.Checkbutton(f, text="Hologramme transparent sans bordure",
                         variable=self.champs["transparent"]).grid(row=n + 1, column=1, sticky="w")
-        ttk.Checkbutton(f, text="Réponses libres par IA locale (Ollama), signalées comme non sourcées",
-                        variable=self.champs["llm_actif"]).grid(row=n + 2, column=1, sticky="w")
         ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 3, column=1, sticky="e", pady=8)
 
         cadre = ttk.LabelFrame(f, text="Espace disque d'Orion", padding=6)
@@ -513,6 +616,21 @@ class Panneau:
                                 "comptent pas dans la limite d'espace d'Orion.", foreground=DISCRET,
                   wraplength=700).grid(row=2, column=0, columnspan=4, sticky="w")
         self._rafraichir_dossiers()
+
+        from . import conversation
+        cadre_c = ttk.LabelFrame(f, text="Conversation libre — modèle local, rien ne sort de l'ordinateur", padding=6)
+        cadre_c.grid(row=n + 6, column=0, columnspan=3, sticky="we", pady=6)
+        self.conv_modele = tk.StringVar(value=conversation.choix(c))
+        for i, (cle, m) in enumerate(conversation.MODELES.items()):
+            etat = "installé" if conversation.installe(cle) else "à télécharger"
+            ttk.Radiobutton(cadre_c, text=f"{m['nom']} · ~{m['memoire_go']} Go de mémoire · {m['licence']} · {etat}",
+                            value=cle, variable=self.conv_modele).grid(row=i, column=0, columnspan=3, sticky="w")
+        ttk.Button(cadre_c, text="Installer…", command=lambda: self._installer_composants(
+            [("conversation", self.conv_modele.get())])).grid(row=len(conversation.MODELES), column=0, sticky="w")
+        ttk.Label(cadre_c, text="Orion télécharge lui-même le moteur llama.cpp (MIT) et le modèle dans son dossier. "
+                                "Sans modèle, il répond aux commandes et à son savoir, mais ne bavarde pas.",
+                  foreground=DISCRET, wraplength=700, justify="left").grid(row=len(conversation.MODELES) + 1,
+                                                                          column=0, columnspan=3, sticky="w")
 
     def _rafraichir_espace(self):
         o, l, r = espace.etat(self.cfg)
@@ -605,10 +723,64 @@ class Panneau:
                         aimp_exe=v["aimp_exe"],
                         dossier_musique=v["dossier_musique"], seuil_locuteur=round(v["seuil_locuteur"], 2),
                         mots_eveil=[m.strip().lower() for m in v["mots_eveil"].split(",") if m.strip()])
-        self.cfg["llm"].update(actif=v["llm_actif"], modele=v["llm_modele"])
+        self.cfg["conversation"] = {**self.cfg.get("conversation", {}), "modele": self.conv_modele.get()}
         self.cfg["hologramme"].update(transparent=v["transparent"])
         sauver(self.cfg)
         messagebox.showinfo("Réglages", "Enregistré. Relancez l'assistant pour appliquer.")
+
+    def _manquants(self):
+        from . import composants
+        return composants.manquants(self.cfg)
+
+    def _installer_composants(self, composants):
+        """Annonce l'espace nécessaire, propose de relever la limite si besoin (avec ses avertissements),
+        puis installe, le tout sans figer la fenêtre."""
+        from . import conversation, espace, piper
+        if not composants:
+            return messagebox.showinfo("Installation", "Tout est déjà installé.")
+        modules = {"voix": piper, "conversation": conversation}
+        self.etat_installation.set("Calcul de l'espace nécessaire…")
+
+        def estimer():
+            try:
+                lignes = [l for genre, cle in composants for l in modules[genre].estimer(cle)]
+            except Exception as e:
+                return self.root.after(0, lambda: self.etat_installation.set(f"Impossible d'estimer (internet ?) : {e}"))
+            self.root.after(0, lambda: confirmer(lignes))
+
+        def confirmer(lignes):
+            total = sum(o for _, o in lignes)
+            detail = "\n".join(f"• {l} : {espace.mo(o)}" for l, o in lignes)
+            texte = f"Orion va télécharger environ {espace.mo(total)} :\n\n{detail}"
+            besoin = espace.occupe() + total
+            if besoin > espace.limite(self.cfg):
+                nouvelle = int((besoin / espace.MO + 511) // 512 * 512)  # arrondi au demi-Go supérieur
+                avert = espace.verifier_nouvelle_limite(nouvelle)
+                texte += (f"\n\nC'est plus que la limite actuelle d'Orion ({espace.mo(espace.limite(self.cfg))}). "
+                          f"Il faut la porter à {nouvelle} Mo.")
+                if avert:
+                    texte += "\n\n⚠ " + "\n⚠ ".join(avert)
+                if any("ne pourrait pas" in a for a in avert):
+                    self.etat_installation.set("")
+                    return messagebox.showerror("Espace insuffisant", texte)
+                if not messagebox.askokcancel("Installation", texte + "\n\nRelever la limite et installer ?"):
+                    return self.etat_installation.set("")
+                self.cfg["limite_disque_mo"] = nouvelle
+                sauver(self.cfg)
+            elif not messagebox.askokcancel("Installation", texte + "\n\nContinuer ?"):
+                return self.etat_installation.set("")
+
+            def installer():
+                from . import composants as comp
+                try:
+                    comp.installer(self.cfg, composants,
+                                   lambda m: self.root.after(0, lambda: self.etat_installation.set(m)))
+                    self.root.after(0, lambda: self.etat_installation.set(
+                        "Installation terminée. Relancez Orion pour en profiter."))
+                except Exception as e:
+                    self.root.after(0, lambda: self.etat_installation.set(f"Échec de l'installation : {e}"))
+            threading.Thread(target=installer, daemon=True).start()
+        threading.Thread(target=estimer, daemon=True).start()
 
     def _credits_pdf(self):
         from .credits import generer_pdf

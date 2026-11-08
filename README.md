@@ -89,6 +89,20 @@ Les fiches et les crédits en PDF sont enregistrés dans **vos** dossiers : par 
   - dans `config.json` : `"dossiers": {"documents": "…", "école": "…"}` et `"dossier_defaut"`.
 - Retirer un dossier de la liste ne supprime pas ses fichiers.
 
+## Voix naturelle et conversation libre (installées par Orion)
+
+Orion peut s'installer lui-même, **sur l'ordinateur, sans rien envoyer en ligne** :
+
+| Composant | Rôle | Taille | Licence |
+|---|---|---|---|
+| sherpa-onnx + voix Piper Siwis (ou Jessica, Pierre, Gilles) | Voix naturelle, bien moins synthétique | ≈ 90 Mo | Apache 2.0 ; voix CC-BY 4.0, CC-BY-SA 4.0 ou CC0 |
+| llama.cpp + Ministral 3 3B (ou Qwen3 1.7B, Gemma 3 1B) | Conversation libre en français | ≈ 2,2 Go (0,8 Go pour Gemma) | MIT ; Apache 2.0 (Gemma : conditions Google) |
+
+- **Dans le panneau** : bouton « Installer ce qui manque… ». L'espace nécessaire est annoncé avant. Si la limite d'espace d'Orion est trop basse, il propose de la relever, avec confirmation et vérification de l'espace libre.
+- **À la voix** : « installe ce qui te manque ». Orion annonce la taille et attend ton « oui ». La limite ne se change jamais à la voix.
+- **Ordre des réponses** : commandes, puis savoir sourcé, puis Wikipédia avec accord pour les questions factuelles, et enfin la conversation libre pour le reste. Le modèle connaît le contexte de la personne (prénom, tutoiement, âge, souvenirs), qui ne quitte jamais l'ordinateur.
+- **Mémoire** : le moteur de conversation démarre au premier besoin et s'arrête après 10 minutes sans échange.
+
 ## Langues de discussion
 
 Orion pense en français. Pour une autre langue, vos phrases sont traduites en français, puis ses réponses dans votre langue, **sur l'ordinateur, hors ligne**.
