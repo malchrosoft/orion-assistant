@@ -44,6 +44,12 @@ CAPACITES = json.loads((Path(__file__).parent / "data" / "capacites.json").read_
 CAPACITES_TOT = (r"^comment (?:je |on |est ce qu on |faire pour |puis je |peut on |dois je |tu )?"
                  r"|\b(que|quoi|qu est ce que) (tu sais|sais tu|tu peux|peux tu) faire\b"
                  r"|\btu sais faire quoi\b|\btes (fonctions|capacites)\b|\ba quoi tu sers\b")
+# Questions qu'Orion peut laisser en attente, avec leur valeur « rien en attente »
+ATTENTES = {"en_attente": None, "ville_demandee": None, "duree_demandee": False, "question_tutoiement": None,
+            "oubli_a_confirmer": None, "retrait_voix": None}
+STOP_ATTENTE = r"\b(tais toi|taisez vous|chut|silence|stop|laisse tomber)\b"
+COMMANDES = r"^(?:mets|joue|lance|ouvre|monte|baisse|coupe|pause|reprends|suivant|precedent|arrete)\b"
+VIDEOS_MENSUELLES = "https://www.jw.org/fr/biblioth%C3%A8que/videos/#fr/categories/StudioMonthlyPrograms"
 OUI = r"^(oui|ouais|ok|d accord|vas y|va s y|bien sur|volontiers|je veux bien|oui merci|si|fais le|c est parti|(tele)?charge)\b"
 NON = r"^(non|pas la peine|laisse tomber|non merci|annule)\b"
 
@@ -118,7 +124,22 @@ class Cerveau(Publications, Documents):
 
     def repondre(self, phrase: str, locuteur: str):
         """Renvoie (texte à dire, tâche) ; tâche est une fonction à exécuter (état « exécution ») ou None.
-        Ajoute à la réponse brute la relation avec la personne : tutoiement, mémoire locale, voix inconnue."""
+        Une question d'Orion (« on se tutoie ? », « pour quelle ville ? »…) n'attend qu'une réponse : un ordre
+        d'arrêt l'annule, et elle expire si la phrase suivante n'y répond pas."""
+        attentes = {a: getattr(self, a) for a in ATTENTES}
+        en_cours = [a for a, v in attentes.items() if v is not ATTENTES[a]]  # « » compte : ville à demander
+        if en_cours and re.search(STOP_ATTENTE, normaliser(phrase)):
+            for a, vide in ATTENTES.items():
+                setattr(self, a, vide)
+            return "D'accord.", None
+        resultat = self._repondre_avec_relation(phrase, locuteur)
+        for a in en_cours:
+            if getattr(self, a) is attentes[a]:  # restée sans réponse : on n'en parle plus
+                setattr(self, a, ATTENTES[a])
+        return resultat
+
+    def _repondre_avec_relation(self, phrase: str, locuteur: str):
+        """Ajoute à la réponse brute la relation avec la personne : tutoiement, mémoire locale, voix inconnue."""
         connu = locuteur != "invité"
         t = normaliser(phrase)
         self.tour += 1  # numéro de l'échange (pour « oublie ça » : seulement l'échange juste avant)
@@ -352,7 +373,8 @@ class Cerveau(Publications, Documents):
     def _finaliser(self, texte, phrase, locuteur):
         """Vouvoiement si besoin, mémoire locale, et une fois par session : « on se tutoie ? »."""
         if (not self.export_en_cours and texte and not texte.rstrip().endswith("?")
-                and len(phrase.split()) > 2 and not re.search(OUI + "|" + NON, normaliser(phrase))):
+                and len(phrase.split()) > 2 and not re.search(OUI + "|" + NON, normaliser(phrase))
+                and not re.search(COMMANDES, normaliser(phrase))):
             sources = self.sources_reponse or ([s for s in (self.derniere_fiche or {}).get("sources", [])
                                                  if s.get("consulte")]
                                                 if self.derniere_origine in ("locale", "wikipedia") else [])
@@ -433,6 +455,11 @@ class Cerveau(Publications, Documents):
         # tournures acceptées : « minuteur de 5 minutes », « compte 5 minutes », « décompte 30 s »,
         # « préviens-moi dans 10 minutes », « mets 3 minutes », « lance 20 secondes »…
         duree_dite = minuteur.duree(chiffres(t))
+        if self.minuteurs and not duree_dite and re.search(r"\b(reste|restant)\b", t) and re.search(
+                r"\b(combien|temps|encore)\b", t):
+            return "Il reste " + " ; ".join(
+                f"{minuteur.en_mots(m['fin'] - time.monotonic())}" + (f" pour {m['nom']}" if m["nom"] else "")
+                for m in self.minuteurs) + ".", None
         if re.search(r"\b(a rebours|minuteurs?|minuteries?|chronos?|chronometres?|timers?|decomptes?|decompter|"
                      r"compteurs?)\b", t) \
                 or (duree_dite and re.search(r"^\d+\s*(?:heures?|h|minutes?|min|mn|secondes?|sec|s)\b.*\bpour\b|"
@@ -496,7 +523,8 @@ class Cerveau(Publications, Documents):
         m = re.search(r"\b(?:fiche|document|pdf|resume)\b.*?\b(?:sur|de|du|des|a propos de|concernant) (?:la |le |les |l )?(.+?)(?: avec (?:des )?renvois?| en pdf)*$", t_sujet)
         if m and re.search(r"\b(pdf|fiche|document)\b", t) and re.search(r"\b(fais|fait|genere|cree|prepare|imprime|donne)\b", t):
             return self._fiche_pdf(m.group(1), bool(re.search(r"\brenvois?\b", t)), cle)
-        if re.search(r"\b(credits?|bibliotheques?|librairies?|composants?|logiciels? libres?|"
+        if not re.search(r"\b(ta|ma) bibliotheque\b|\bdocuments?\b", t) and re.search(
+                r"\b(credits?|bibliotheques?|librairies?|composants?|logiciels? libres?|"
                      r"qui t a (fait|programme|developpe)|avec quoi (tu es|es tu) fait)\b", t):
             from .credits import enoncer
             return enoncer(t), None
@@ -627,6 +655,12 @@ class Cerveau(Publications, Documents):
                       r"\s+(?:l |la |le |les |d )?(.+)$", t)
         if m and not bible.reference(chiffres(t)):
             return self._chercher_publications(m.group(1), t)
+
+        # --- Émission vidéo du mois (vidéothèque du site de l'éditeur), ouverte à l'écran ---
+        if re.search(r"\b(broadcasting|broad casting|emission (?:du mois|mensuelle)|programme mensuel)\b", t):
+            self.derniere_origine = "bible"
+            return None, lambda: (self.actions.ouvrir_lien(VIDEOS_MENSUELLES),
+                                  "Je t'ouvre l'émission du mois dans la vidéothèque.")[1]
 
         # --- Questions bibliques : base externe, source donnée seulement sur demande ---
         self.derniere_fiche = None
