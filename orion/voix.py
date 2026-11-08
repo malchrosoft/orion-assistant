@@ -172,8 +172,13 @@ class Profils:
                                       for c, (m, _) in self.traits_de(n).items()}}
         return resultat
 
-    def enregistrer(self, nom, vecteurs):
-        self.data[nom] = [list(v) for v in vecteurs]
+    def enregistrer(self, nom, vecteurs, mesures=(), completer=False):
+        """Enregistre la voix lue (empreintes et traits de chaque phrase). `completer` : ajoute à ce qu'Orion
+        sait déjà de cette voix ; sinon remplace tout (empreintes apprises et anciens traits compris)."""
+        anciennes = self._empreintes(nom) if completer and nom in self.data else []
+        self.data[nom] = (anciennes + [list(v) for v in vecteurs])[-self.MAX:]
+        mesures = [m for m in mesures if m]
+        self.hauteurs[nom] = ((self.hauteurs.get(nom, []) if completer else []) + mesures)[-self.MAX:]
         self._sauver()
 
     def apprendre(self, nom, vecteur, hz=None):
@@ -259,8 +264,11 @@ class Oreille:
         """Bloque jusqu'à une phrase complète ; renvoie (texte, empreinte ou None)."""
         while True:
             bloc = self.file.get()
+            self._phrase += bloc
             if self.reco.AcceptWaveform(bloc):
                 r = json.loads(self.reco.Result())
+                self.traits = traits(self._phrase[-16000 * 2 * 12:], r.get("result", [])) if r.get("text") else {}
+                self._phrase.clear()
                 if r.get("text"):
                     return r["text"], r.get("spk")
             elif sur_partiel:

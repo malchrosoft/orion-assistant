@@ -117,9 +117,7 @@ def retenir(nom, souvenir):
 def chercher_memoire(nom, mots):
     """Entrées de la mémoire de la personne qui contiennent ces mots (recherche textuelle, sans accents) :
     [(« souvenir » | « échange », position, texte lisible)], les plus récentes d'abord."""
-    p, cible = fiche(nom), normaliser(mots)
-    if not cible:
-        return []
+    p, cible = fiche(nom), normaliser(mots)  # sans mots : toute la mémoire de la personne
     trouvees = [("souvenir", i, s["texte"]) for i, s in enumerate(p.get("souvenirs", []))
                 if cible in normaliser(s["texte"])]
     trouvees += [("échange", i, f"{e['question']} → {e['reponse']}") for i, e in enumerate(p.get("historique", []))

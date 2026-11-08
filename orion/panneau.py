@@ -11,6 +11,7 @@ import sys
 import threading
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import espace, knowledge, langues, web
@@ -182,7 +183,7 @@ class Panneau:
         self.arbre.pack(fill="both", expand=True)
         self._rafraichir_savoir()
 
-        cadre = ttk.LabelFrame(f, text="Apprendre depuis un lien internet", padding=6)
+        cadre = ttk.LabelFrame(f, text="Apprendre depuis une URL (internet ou intranet) ou un fichier", padding=6)
         cadre.pack(fill="x", pady=6)
         self.url, self.sujet, self.domaine = tk.StringVar(), tk.StringVar(), tk.StringVar(value="web")
         for i, (lib, var) in enumerate((("Lien", self.url), ("Sujet (facultatif)", self.sujet))):
@@ -190,6 +191,13 @@ class Panneau:
             ttk.Entry(cadre, textvariable=var, width=60).grid(row=i, column=1, sticky="we")
         ttk.Combobox(cadre, textvariable=self.domaine, values=DOMAINES, width=12).grid(row=0, column=2)
         ttk.Button(cadre, text="Lire et retenir", command=self._apprendre).grid(row=1, column=2)
+        ttk.Button(cadre, text="Fichier…", command=lambda: self.url.set(filedialog.askopenfilename(filetypes=[
+            ("Documents", "*.epub *.pdf *.md *.markdown *.txt *.docx *.html *.htm"), ("Tous", "*")]) or self.url.get())
+                   ).grid(row=0, column=3)
+        ttk.Label(cadre, foreground=DISCRET, wraplength=620, justify="left", text=(
+            "Document (EPUB, PDF, Word, Markdown, texte, HTML) : ajouté à la bibliothèque et découpé en passages "
+            "indexés, cités avec leur page ou leur section. Page web : résumée en une fiche. Dans les deux cas, "
+            "le contenu reste « non vérifié ».")).grid(row=2, column=0, columnspan=4, sticky="w")
 
         pub = ttk.LabelFrame(f, text="Publication de jw.org (EPUB)", padding=6)
         pub.pack(fill="x", pady=6)
@@ -231,17 +239,27 @@ class Panneau:
         for fi in knowledge.toutes_les_fiches():
             self.arbre.insert("", "end", text=fi["titre"], values=(
                 fi["domaine"], "⚠ internet, non vérifiée" if fi["titre"] in appris else "livrée"))
+        from . import bibliotheque
+        for nom, url, n in bibliotheque.liste():
+            self.arbre.insert("", "end", text=nom, values=("bibliothèque", f"⚠ document ajouté ({n} passages)"))
 
     def _apprendre(self):
-        url = self.url.get().strip()
+        from . import bibliotheque, dossiers
+        url = self.url.get().strip().strip('"')
         if not url or not messagebox.askokcancel("Prudence", web.AVERTISSEMENT + "\n\nContinuer ?"):
             return
+        document = bibliotheque.est_document(url) or ("://" not in url and Path(url).expanduser().is_file())
 
         def tache():
             try:
-                _, message = web.apprendre(url, self.sujet.get().strip() or None, self.domaine.get())
+                if document:  # document entier : bibliothèque indexée (internet, intranet ou fichier local)
+                    nom, n = bibliotheque.ajouter(url, dossiers.chemin(self.cfg) / "Bibliothèque")
+                    message = (f"« {nom} » ajouté à la bibliothèque : {n} passage(s) indexé(s). "
+                               "Orion le citera comme source non vérifiée.")
+                else:
+                    _, message = web.apprendre(url, self.sujet.get().strip() or None, self.domaine.get())
             except Exception as e:
-                message = f"Impossible de lire la page : {e}"
+                message = f"Impossible de lire ce document ou cette page : {e}"
             self.root.after(0, lambda: (messagebox.showinfo("Résultat", message), self._rafraichir_savoir()))
         threading.Thread(target=tache, daemon=True).start()
 
@@ -562,9 +580,11 @@ class Panneau:
         self.prenom = tk.StringVar()
         ttk.Entry(ligne, textvariable=self.prenom).pack(side="left")
         ttk.Button(ligne, text="Enregistrer sa voix", command=self._enroler).pack(side="left")
+        ttk.Button(ligne, text="Compléter sa voix", command=lambda: self._enroler(completer=True)).pack(side="left")
         ttk.Button(ligne, text="Supprimer", command=self._supprimer_voix).pack(side="left")
         ttk.Button(ligne, text="Couleur…", command=self._choisir_couleur).pack(side="left")
         ttk.Button(ligne, text="Comparer les voix…", command=self._comparer_voix).pack(side="left")
+        ttk.Button(ligne, text="Mémoire…", command=self._memoire).pack(side="left")
         self.etat_enrolement = tk.StringVar(value="Cliquez, puis lisez 5 phrases à voix haute, une par une. "
                                                   "Fermez Orion vocal pendant l'enregistrement (micro partagé).")
         ttk.Label(f, textvariable=self.etat_enrolement, foreground=DISCRET, wraplength=720,
@@ -582,9 +602,108 @@ class Panneau:
             if couleur:
                 self.liste_voix.itemconfigure("end", foreground=couleur)
 
+    def _memoire(self):
+        """Mémoire d'une personne : recherche textuelle dans ses souvenirs et ses échanges, suppression choisie."""
+        from . import personnes
+        noms = sorted(set(personnes._lire()) | set(self._profils()))
+        if not noms:
+            messagebox.showinfo("Mémoire", "Orion ne garde encore rien sur personne.")
+            return
+        f = tk.Toplevel(self.root)
+        f.title("Mémoire d'Orion")
+        f.configure(bg=FOND)
+        haut = ttk.Frame(f)
+        haut.pack(fill="x", padx=10, pady=10)
+        choix = self.liste_voix.curselection()
+        # par défaut : la personne sélectionnée, sinon celle dont Orion garde le plus de choses
+        plein = max(noms, key=lambda n: len(personnes.chercher_memoire(n, "")))
+        qui = tk.StringVar(value=self.liste_voix.get(choix[0])[2:] if choix else plein)
+        cherche = tk.StringVar()
+        ttk.Label(haut, text="Personne").pack(side="left")
+        style = ttk.Style(f)  # liste déroulante lisible sur le thème sombre (texte clair sur fond sombre)
+        style.map("TCombobox", fieldbackground=[("readonly", SURFACE)], foreground=[("readonly", TEXTE)],
+                  selectbackground=[("readonly", SURFACE)], selectforeground=[("readonly", TEXTE)])
+        ttk.Combobox(haut, textvariable=qui, values=noms, width=16, state="readonly").pack(side="left", padx=6)
+        ttk.Label(haut, text="Rechercher").pack(side="left")
+        champ = ttk.Entry(haut, textvariable=cherche, width=30)
+        champ.pack(side="left", padx=6)
+        liste = tk.Listbox(f, selectmode="extended", width=110, height=16, bg=SURFACE, fg=TEXTE,
+                           selectbackground=ACCENT, selectforeground=FOND, highlightthickness=0)
+        liste.pack(fill="both", expand=True, padx=10)
+        etat = tk.StringVar()
+        ttk.Label(f, textvariable=etat, foreground=DISCRET).pack(anchor="w", padx=10)
+        trouvees = []
+
+        def rafraichir(*_):
+            trouvees[:] = personnes.chercher_memoire(qui.get(), cherche.get())
+            liste.delete(0, "end")
+            for genre, _, texte in trouvees:
+                liste.insert("end", f"{'★ souvenir' if genre == 'souvenir' else '  échange '}  {texte}")
+            etat.set(f"{len(trouvees)} entrée(s)" + (f" contenant « {cherche.get()} »" if cherche.get() else "")
+                     + ". Les souvenirs (★) sont gardés sans limite ; les échanges sont les derniers dialogues.")
+
+        def supprimer():
+            choisies = [trouvees[i] for i in liste.curselection()]
+            if not choisies:
+                messagebox.showinfo("Mémoire", "Sélectionnez d'abord les entrées à oublier.", parent=f)
+                return
+            if messagebox.askyesno("Mémoire", f"Oublier {len(choisies)} entrée(s) de {qui.get()} ?", parent=f):
+                personnes.supprimer_entrees(qui.get(), choisies)
+                rafraichir()
+        bas = ttk.Frame(f)
+        bas.pack(fill="x", padx=10, pady=10)
+        ttk.Button(bas, text="Oublier la sélection", command=supprimer).pack(side="left")
+        ttk.Button(bas, text="Tout sélectionner", command=lambda: liste.select_set(0, "end")).pack(side="left", padx=6)
+        cherche.trace_add("write", rafraichir)
+        qui.trace_add("write", rafraichir)
+        rafraichir()
+        champ.focus_set()
+
     def _comparer_voix(self):
         """Tableau des voix : traits et ressemblances. Ce qui rapproche deux voix au point de les confondre
         clignote en rouge gras ; ce qui les distingue est en vert. Une explication suit, paire par paire."""
+        from .voix import HAUTEURS, PROFILS, TOLERANCES, Profils
+        f = tk.Toplevel(self.root)
+        f.title("Comparer les voix")
+        f.configure(bg=FOND)
+        zone = tk.Frame(f, bg=FOND)
+        zone.pack(fill="both", expand=True)
+        maj = tk.StringVar()
+        tk.Label(f, textvariable=maj, bg=FOND, fg=DISCRET).pack(anchor="e", padx=10, pady=(0, 6))
+        clignotants = []
+        vu = {"dates": None}
+
+        def dates():
+            return tuple(fic.stat().st_mtime if fic.exists() else 0 for fic in (PROFILS, HAUTEURS))
+
+        def surveiller():  # en direct : Orion apprend pendant la conversation, le tableau suit
+            if not f.winfo_exists():
+                return
+            if dates() != vu["dates"]:
+                vu["dates"] = dates()
+                for enfant in zone.winfo_children():
+                    enfant.destroy()
+                clignotants.clear()
+                construire()
+                maj.set(f"● mis à jour à {__import__('time').strftime('%H:%M:%S')} (suivi en direct)")
+            f.after(1500, surveiller)
+
+        def clignoter(allume=[True]):  # rouge vif ↔ rouge sombre, toutes les 0,5 s
+            if not f.winfo_exists():
+                return
+            allume[0] = not allume[0]
+            for l in clignotants:
+                if l.winfo_exists():
+                    l.configure(fg="#ff4d4d" if allume[0] else "#6e1f1f")
+            f.after(500, clignoter)
+
+        def construire():
+            self._remplir_comparaison(zone, clignotants)
+        surveiller()
+        clignoter()
+
+    def _remplir_comparaison(self, zone, clignotants):
+        """Contenu du comparateur (reconstruit dès qu'Orion apprend une nouvelle valeur de voix)."""
         from .voix import TOLERANCES, Profils
         seuil = self.cfg["seuil_locuteur"]
         donnees = Profils(seuil).comparaison()
@@ -602,12 +721,9 @@ class Panneau:
             return v is not None and any(abs(v - donnees[p]["traits"].get(cle, 1e9)) < TOLERANCES[cle]
                                          for p in partenaires[n])
 
-        f = tk.Toplevel(self.root)
-        f.title("Comparer les voix")
-        f.configure(bg=FOND)
+        f = zone
         grille = tk.Frame(f, bg=FOND)
         grille.pack(padx=10, pady=10)
-        clignotants = []
 
         def case(ligne, col, texte, couleur=TEXTE, gras=False, clignote=False):
             l = tk.Label(grille, text=texte, bg=SURFACE, fg=couleur, padx=8, pady=4,
@@ -638,20 +754,12 @@ class Panneau:
                     continue
                 v = d["proches"][autre]
                 if v >= seuil:
-                    case(r, c, f"{v:.2f}", rouge, gras=True, clignote=True)
+                    case(r, c, f"{v:.0%}", rouge, gras=True, clignote=True)
                 elif v >= seuil - 0.05:
-                    case(r, c, f"{v:.2f}", orange)
+                    case(r, c, f"{v:.0%}", orange)
                 else:
-                    case(r, c, f"{v:.2f}")
+                    case(r, c, f"{v:.0%}")
 
-        def clignoter(allume=[True]):  # rouge vif ↔ rouge sombre, toutes les 0,5 s
-            if not f.winfo_exists():
-                return
-            allume[0] = not allume[0]
-            for l in clignotants:
-                l.configure(fg=rouge if allume[0] else "#6e1f1f")
-            f.after(500, clignoter)
-        clignoter()
 
         # explication, paire par paire
         lignes = []
@@ -662,7 +770,7 @@ class Panneau:
                          if abs(x - y) < TOLERANCES[next(c for c, tt, _ in traits if tt == t)]]
             distingue = [f"{t} {x:g}/{y:g} {u}" for t, u, x, y in communs
                          if abs(x - y) >= TOLERANCES[next(c for c, tt, _ in traits if tt == t)]]
-            texte = f"{a} ↔ {b} : empreintes ressemblantes à {donnees[a]['proches'][b]:.2f} (seuil {seuil:.2f})"
+            texte = f"{a} ↔ {b} : empreintes ressemblantes à {donnees[a]['proches'][b]:.0%} (seuil {seuil:.0%})"
             if rapproche:
                 texte += " ; aussi proches : " + ", ".join(rapproche)
             if distingue:
@@ -693,11 +801,22 @@ class Panneau:
             personnes.modifier(nom, couleur=couleur)
             self._rafraichir_voix()
 
-    def _enroler(self):
-        """Enregistre la voix dans le panneau même (la version installée n'a pas de console)."""
+    def _enroler(self, completer=False):
+        """Enregistre la voix dans le panneau même (la version installée n'a pas de console). `completer` :
+        cinq phrases de plus pour une voix déjà connue, sans effacer ce qu'Orion en a appris."""
         nom = self.prenom.get().strip()
+        if not nom and self.liste_voix.curselection():  # sinon : la personne sélectionnée dans la liste
+            nom = self.liste_voix.get(self.liste_voix.curselection()[0])[2:]
         if not nom:
+            messagebox.showinfo("Voix", "Tapez un prénom, ou sélectionnez une personne dans la liste.")
             return
+        connue = nom in self._profils()
+        if connue and not completer and not messagebox.askyesno(
+                "Remplacer la voix", f"La voix de {nom} est déjà enregistrée. La remplacer entièrement "
+                "(empreintes apprises et traits compris) ? Pour seulement l'améliorer, choisissez « Compléter sa voix »."):
+            return
+        if completer and not connue:
+            completer = False
 
         def afficher(message):
             self.root.after(0, lambda: self.etat_enrolement.set(message))
@@ -710,17 +829,19 @@ class Panneau:
                 if manquants(UTILISATEUR / "models"):
                     afficher("Téléchargement des modèles vocaux (première fois)…")
                     installer(UTILISATEUR / "models")
-                oreille, vecteurs = Oreille(self.cfg), []
+                oreille, vecteurs, mesures = Oreille(self.cfg), [], []
                 afficher(f"{nom}, lisez une phrase à voix haute… (1/5)")
                 while len(vecteurs) < 5:
                     texte, vecteur = oreille.phrase()
                     if vecteur:
                         vecteurs.append(vecteur)
+                        mesures.append(oreille.traits)
                         afficher(f"✓ « {texte} » — phrase suivante ({len(vecteurs) + 1}/5)" if len(vecteurs) < 5
                                  else "Enregistrement terminé.")
                 oreille.flux.stop()
-                Profils(self.cfg["seuil_locuteur"]).enregistrer(nom, vecteurs)
-                afficher(f"La voix de {nom} est enregistrée : {self.cfg['nom']} la reconnaîtra.")
+                Profils(self.cfg["seuil_locuteur"]).enregistrer(nom, vecteurs, mesures, completer)
+                afficher(f"La voix de {nom} est {'complétée' if completer else 'enregistrée'} : "
+                         f"{self.cfg['nom']} la reconnaîtra mieux.")
                 self.root.after(0, self._rafraichir_voix)
             except Exception as e:
                 afficher(f"Échec de l'enregistrement : {e}")
@@ -765,7 +886,7 @@ class Panneau:
 
         def afficher_seuil(*_):
             x = self.champs["seuil_locuteur"].get()
-            valeur.configure(text=f"{x:.2f} — " + ("souple : reconnaît plus, confond plus" if x < 0.5 else
+            valeur.configure(text=f"{x:.0%} — " + ("souple : reconnaît plus, confond plus" if x < 0.5 else
                                                    "strict : confond moins, reconnaît moins" if x > 0.65 else
                                                    "équilibré"))
         ttk.Scale(seuil, from_=0.3, to=0.8, variable=self.champs["seuil_locuteur"],
