@@ -21,3 +21,6 @@ sources_privees/
 orion-erreurs.log
 orion/data/hauteurs_voix.json
 .orion_parle
+.panneau.pid
+.panneau.devant
+.fenetres.json

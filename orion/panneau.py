@@ -18,6 +18,7 @@ from .bouche import LANGUES, Bouche, lister_voix
 from .persona import GENRES, salutation
 from .actions import Actions
 from .brain import Cerveau
+from . import fenetres
 from .config import charger, sauver
 from .panneau_famille import Famille
 from .theme import ACCENT, DISCRET, FOND, SURFACE, TEXTE, theme
@@ -34,8 +35,14 @@ class Panneau(Famille):
         self.root.title(f"{self.cfg['nom']} — panneau")
         # entièrement visible au chargement, même sur un petit écran : taille bornée et fenêtre centrée
         l, h = min(780, self.root.winfo_screenwidth() - 40), min(560, self.root.winfo_screenheight() - 100)
-        self.root.geometry(f"{l}x{h}+{(self.root.winfo_screenwidth() - l) // 2}"
-                           f"+{max(0, (self.root.winfo_screenheight() - h) // 2 - 20)}")
+        if not fenetres.dans_l_ecran(self.root, fenetres.position("panneau")):  # sinon : centré
+            self.root.geometry(f"{l}x{h}+{(self.root.winfo_screenwidth() - l) // 2}"
+                               f"+{max(0, (self.root.winfo_screenheight() - h) // 2 - 20)}")
+        self.secondaires = {}  # une seule fenêtre de chaque sorte (comparateur, mémoire…)
+        fenetres.prendre_verrou()
+        self._vu_devant = fenetres.DEVANT.stat().st_mtime if fenetres.DEVANT.exists() else 0
+        self.root.protocol("WM_DELETE_WINDOW", self.fermer)
+        self.root.after(800, self._surveiller_devant)
         theme(self.root)
         from .hologramme import icone
         icone(self.root)
@@ -791,5 +798,39 @@ class Panneau(Famille):
         from .credits import generer_pdf
         webbrowser.open(generer_pdf().as_uri())
 
+    def secondaire(self, nom, titre):
+        """Fenêtre secondaire unique, rattachée au panneau : déjà ouverte → ramenée devant, et None."""
+        f = self.secondaires.get(nom)
+        if f is not None and f.winfo_exists():
+            f.deiconify()
+            f.lift()
+            f.focus_force()
+            return None
+        f = self.secondaires[nom] = tk.Toplevel(self.root)
+        f.title(titre)
+        f.transient(self.root)  # reste avec le panneau, fermée avec lui
+        return f
+
+    def _surveiller_devant(self):
+        """Un second lancement du panneau (double-clic sur l'hologramme…) le ramène au premier plan."""
+        try:
+            date = fenetres.DEVANT.stat().st_mtime if fenetres.DEVANT.exists() else 0
+            if date != self._vu_devant:
+                self._vu_devant = date
+                self.root.deiconify()
+                self.root.lift()
+                self.root.attributes("-topmost", True)
+                self.root.after(300, lambda: self.root.attributes("-topmost", False))
+                self.root.focus_force()
+        finally:
+            self.root.after(800, self._surveiller_devant)
+
+    def fermer(self):
+        fenetres.retenir("panneau", self.root.geometry())
+        fenetres.rendre_verrou()
+        self.root.destroy()
+
     def lancer(self):
+        import signal
+        signal.signal(signal.SIGTERM, lambda *_: self.root.after(0, self.fermer))  # l'hologramme se ferme
         self.root.mainloop()

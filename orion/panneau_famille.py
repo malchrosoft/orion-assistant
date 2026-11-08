@@ -52,8 +52,9 @@ class Famille:
         if not noms:
             messagebox.showinfo("Mémoire", "Orion ne garde encore rien sur personne.")
             return
-        f = tk.Toplevel(self.root)
-        f.title("Mémoire d'Orion")
+        f = self.secondaire("memoire", "Mémoire d'Orion")
+        if f is None:
+            return
         f.configure(bg=FOND)
         haut = ttk.Frame(f)
         haut.pack(fill="x", padx=10, pady=10)
@@ -106,8 +107,9 @@ class Famille:
         """Tableau des voix : traits et ressemblances. Ce qui rapproche deux voix au point de les confondre
         clignote en rouge gras ; ce qui les distingue est en vert. Une explication suit, paire par paire."""
         from .voix import HAUTEURS, PROFILS
-        f = tk.Toplevel(self.root)
-        f.title("Comparer les voix")
+        f = self.secondaire("comparer", "Comparer les voix")
+        if f is None:
+            return
         f.configure(bg=FOND)
         zone = tk.Frame(f, bg=FOND)
         zone.pack(fill="both", expand=True)

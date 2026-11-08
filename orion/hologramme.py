@@ -247,7 +247,8 @@ class Hologramme:
         self.sur_clic = lambda: None  # un clic simple : Orion écoute (branché par la boucle vocale)
         self.sur_deplacement = lambda: None  # fenêtre déplacée : Orion peut faire une remarque
         self._clic_prevu = None
-        self.root.bind("<Escape>", lambda e: self.root.destroy())
+        self.root.bind("<Escape>", lambda e: self.quitter())
+        self.root.protocol("WM_DELETE_WINDOW", self.quitter)
         # Utilisateur lambda : tout est à la souris (clic droit = menu, double-clic = panneau)
         self.sur_silence = lambda: None
         menu = tk.Menu(self.root, tearoff=0)
@@ -257,12 +258,15 @@ class Hologramme:
                          command=lambda: self.sur_mode_silencieux())
         menu.add_command(label="Panneau (voix, famille, savoir, réglages)", command=self.ouvrir_panneau)
         menu.add_separator()
-        menu.add_command(label=f"Quitter {cfg['nom']}", command=self.root.destroy)
+        menu.add_command(label=f"Quitter {cfg['nom']}", command=self.quitter)
         c.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
         c.bind("<Button-2>", lambda e: menu.tk_popup(e.x_root, e.y_root))  # macOS
         c.bind("<Double-Button-1>", self._double_clic)
         icone(self.root)
         self._ecran_chargement()
+        from . import fenetres
+        if fenetres.position("hologramme"):  # là où on l'avait laissé
+            self.root.geometry(fenetres.position("hologramme"))
         self.root.after(50, self._garder_visible)  # au chargement, une fois la taille réelle connue
         self._animer()
 
@@ -557,8 +561,20 @@ class Hologramme:
 
     @staticmethod
     def ouvrir_panneau():
+        """Un seul panneau : déjà ouvert, il revient au premier plan ; sinon il est lancé."""
+        from . import fenetres
+        if fenetres.panneau_ouvert():
+            fenetres.ramener_panneau()
+            return
         cmd = [sys.executable, "panneau"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "orion", "panneau"]
         subprocess.Popen(cmd)
+
+    def quitter(self):
+        """Fenêtre maîtresse : en partant, elle retient sa place et ferme le panneau."""
+        from . import fenetres
+        fenetres.retenir("hologramme", f"+{self.root.winfo_x()}+{self.root.winfo_y()}")
+        fenetres.fermer_panneau()
+        self.root.destroy()
 
     # Souris : glisser déplace la fenêtre, un clic fait écouter Orion, un double-clic ouvre le panneau
     def _debut_glisser(self, e):
@@ -575,6 +591,8 @@ class Hologramme:
             self._clic_prevu = self.root.after(260, self._clic_simple)
         else:
             self._garder_visible()
+            from . import fenetres
+            fenetres.retenir("hologramme", f"+{self.root.winfo_x()}+{self.root.winfo_y()}")
             self.sur_deplacement()
 
     def _clic_simple(self):

@@ -685,6 +685,9 @@ def main():
     if commande == "savoir":
         return print(f"{knowledge.construire()} fiches indexées.")
     if commande == "panneau":
+        from . import fenetres
+        if fenetres.panneau_ouvert():  # déjà ouvert : ramené au premier plan, pas de second panneau
+            return fenetres.ramener_panneau()
         from .panneau import Panneau
         return Panneau().lancer()
     if commande == "apprendre":
