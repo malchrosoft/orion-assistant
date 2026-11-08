@@ -38,7 +38,10 @@ des programmes produits), Inno Setup (licence permissive de Jordan Russell et Ma
 |---|---|---|
 | Modèles Vosk (français, voix de la famille, autres langues) | <https://alphacephei.com/vosk/models> | Apache 2.0 |
 | sherpa-onnx (moteur de voix naturelle) | <https://github.com/k2-fsa/sherpa-onnx> | Apache 2.0. Son exécutable officiel embarque eSpeak NG (GPL-3.0) et ONNX Runtime (MIT) : Orion le lance comme un programme séparé, sans l'inclure ni le modifier |
-| Voix Piper françaises (paquets sherpa-onnx) | <https://huggingface.co/rhasspy/piper-voices> | siwis : CC-BY 4.0 ; upmc (Jessica, Pierre) : CC-BY-SA 4.0 ; gilles : CC0. La fiche MODEL_CARD de chaque voix est conservée (attribution). La voix « tom » (AGPL-3.0) est volontairement exclue |
+| Voix Piper françaises (paquets sherpa-onnx) | <https://huggingface.co/rhasspy/piper-voices> | siwis : CC-BY 4.0 ; upmc (Jessica, Pierre) : CC-BY-SA 4.0 ; gilles : CC0. La fiche MODEL_CARD de chaque voix est conservée (attribution). Les voix « tom » et « tjiho » (AGPL-3.0) sont volontairement exclues |
+| Voix Piper « Miro » (paquet sherpa-onnx, OpenVoiceOS) | <https://huggingface.co/OpenVoiceOS/pipertts_fr-FR_miro> | CC-BY-NC-ND 4.0 : usage non commercial, utilisée sans modification |
+| Supertonic 3 (Supertone, paquet sherpa-onnx ; moteur sherpa-onnx v2.0.1 installé à part) | <https://huggingface.co/Supertone/supertonic-3> | Modèle : BigScience OpenRAIL-M (usage libre ; les restrictions d'usage nuisible de la licence s'appliquent aussi à l'utilisateur) ; code : MIT |
+| Kokoro multilingue v1.0 (paquet sherpa-onnx, voix française ff_siwis) | <https://huggingface.co/hexgrad/Kokoro-82M> | Apache 2.0 ; licence conservée dans le paquet téléchargé |
 | llama.cpp (moteur de conversation) | <https://github.com/ggml-org/llama.cpp> | MIT. Archive officielle téléchargée à la demande et lancée comme programme séparé |
 | Modèles de conversation (GGUF) | <https://huggingface.co> | Ministral 3 3B (Mistral AI) : Apache 2.0 ; Qwen3 1.7B (Qwen) : Apache 2.0 ; Gemma 3 1B : conditions d'utilisation de Gemma (Google) |
 | Modèles de traduction Argos Translate | <https://github.com/argosopentech/argos-translate> | Dérivés des modèles OPUS-MT : **CC-BY 4.0**. Le README d'attribution de chaque modèle est conservé et affiché dans le panneau (onglet Langues, « Crédits des traductions ») |

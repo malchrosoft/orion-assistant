@@ -92,6 +92,8 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Voix naturelles : Kokoro (Siwis, Apache 2.0), Miro (homme, débit corrigé) et Supertonic 3 (2 voix de
+  femme, 4 voix d'homme, plus vivantes ; moteur 2.x installé à côté). Toutes locales.
 - Icônes de l'application : `.icns` pour macOS (16 à 1024 px), icône du paquet Linux (menu des
   applications), `.ico` pour Windows.
 - Fenêtre maîtresse : un seul panneau à la fois (un second lancement le ramène au premier plan),

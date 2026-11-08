@@ -59,10 +59,10 @@
   {
    "nom": "sherpa-onnx et les voix Piper",
    "role": "la voix naturelle hors ligne, installée à la demande",
-   "auteurs": "k2-fsa (sherpa-onnx) ; Michael Hansen et le projet Rhasspy (voix Piper) ; voix SIWIS, UPMC et Gilles",
+   "auteurs": "k2-fsa (sherpa-onnx) ; Michael Hansen et le projet Rhasspy (voix Piper) ; hexgrad (Kokoro, Apache 2.0) ; OpenVoiceOS (voix Miro, CC-BY-NC-ND 4.0) ; Supertone (Supertonic 3, OpenRAIL-M) ; voix SIWIS, UPMC et Gilles",
    "licence": "Apache 2.0 pour sherpa-onnx ; voix sous CC-BY 4.0, CC-BY-SA 4.0 ou CC0",
    "url": "https://github.com/k2-fsa/sherpa-onnx",
-   "motscles": "piper sherpa onnx voix naturelle neuronale siwis upmc gilles rhasspy"
+   "motscles": "piper kokoro miro supertonic sherpa onnx voix naturelle neuronale siwis upmc gilles rhasspy"
   },
   {
    "nom": "llama.cpp et Ministral",

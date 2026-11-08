@@ -115,7 +115,9 @@ Orion peut s'installer lui-même, **sur l'ordinateur, sans rien envoyer en ligne
 
 | Composant | Rôle | Taille | Licence |
 |---|---|---|---|
-| sherpa-onnx + voix Piper Siwis (ou Jessica, Pierre, Gilles) | Voix naturelle | ≈ 90 Mo | Apache 2.0 ; voix CC-BY 4.0, CC-BY-SA 4.0 ou CC0 |
+| sherpa-onnx + voix **Siwis (Kokoro)**, la plus naturelle | Voix naturelle | ≈ 160 Mo | Apache 2.0 |
+| sherpa-onnx 2.x + **Supertonic 3** : 2 voix de femme, 4 voix d'homme, vivantes | Voix naturelle | ≈ 190 Mo | modèle OpenRAIL-M ; MIT |
+| sherpa-onnx + voix Piper Siwis, Jessica, Pierre, Gilles ou Miro (homme) | Voix naturelle, plus légère | ≈ 90 Mo | Apache 2.0 ; voix CC-BY 4.0, CC-BY-SA 4.0, CC0 ou CC-BY-NC-ND 4.0 (Miro) |
 | llama.cpp + Ministral 3 3B (ou Qwen3 1.7B, Gemma 3 1B) | Conversation libre en français | ≈ 2,2 Go (0,8 Go pour Gemma) | MIT ; Apache 2.0 (Gemma : conditions Google) |
 
 - **Dans le panneau** : « Installer ce qui manque… », espace annoncé avant. **À la voix** : « installe ce qui te manque » ; la limite d'espace ne se change jamais à la voix.
