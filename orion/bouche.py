@@ -21,8 +21,32 @@ NOMS_ANGLAIS = {"fr": "french", "en": "english", "es": "spanish", "de": "german"
                 "zh": "chinese", "ja": "japanese", "ru": "russian"}
 
 
-def bip(volume=0.12):
-    """Petit carillon doux (deux notes montantes) : Orion est prêt à écouter, sans regarder l'écran.
+def _marque():
+    from .config import UTILISATEUR
+    return UTILISATEUR / ".orion_parle"
+
+
+def signaler_parole(en_cours):
+    """Marque partagée entre programmes : une voix d'Orion est en train de parler (essai de voix du panneau…)."""
+    try:
+        _marque().write_text("1" if en_cours else "0")
+    except OSError:
+        pass
+
+
+def parole_recente(marge=1.5):
+    """Vrai si une voix d'Orion parle, ou vient de se taire : ce que le micro entend alors est son écho."""
+    import time
+    try:
+        f = _marque()
+        return f.read_text() == "1" or time.time() - f.stat().st_mtime < marge
+    except OSError:
+        return False
+
+
+def bip(volume=0.12, note=None):
+    """Petit carillon doux (deux notes montantes) : Orion est prêt à écouter, sans regarder l'écran. Avec
+    `note` (Hz) : un seul bip à cette hauteur (celle d'un minuteur, pour le reconnaître à l'oreille).
     Synthétisé à la volée : pas de fichier son à livrer, ni de décodeur, ni de licence."""
     def jouer():
         import array, math
@@ -30,7 +54,7 @@ def bip(volume=0.12):
             import sounddevice as sd
             taux = int(sd.query_devices(kind="output")["default_samplerate"])
             sons = array.array("h")
-            for frequence, duree in ((660, 0.09), (880, 0.14)):
+            for frequence, duree in (((note, 0.22),) if note else ((660, 0.09), (880, 0.14))):
                 n = int(taux * duree)
                 for i in range(n):  # attaque et extinction en douceur, sans clic
                     enveloppe = min(1.0, i / (0.01 * taux)) * math.exp(-4 * i / n)
@@ -193,12 +217,16 @@ class Bouche:
         with self.verrou:
             proc, entree, sortie = self.proc, self.entree, self.sortie
         entree.put({"texte": texte, "voix": self.voix, "vitesse": self.cfg["voix_vitesse"], "piper": self.piper})
-        while proc.is_alive():  # interrompre() tue le processus : on rend la main aussitôt
-            try:
-                return sortie.get(timeout=0.2) == "fini"
-            except Exception:  # queue.Empty
-                continue
-        return False
+        signaler_parole(True)  # le panneau (autre programme) parle aussi : l'écoute d'Orion doit l'ignorer
+        try:
+            while proc.is_alive():  # interrompre() tue le processus : on rend la main aussitôt
+                try:
+                    return sortie.get(timeout=0.2) == "fini"
+                except Exception:  # queue.Empty
+                    continue
+            return False
+        finally:
+            signaler_parole(False)
 
     def interrompre(self):
         with self.verrou:

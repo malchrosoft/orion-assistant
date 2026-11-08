@@ -176,10 +176,10 @@ class Hologramme:
         self.trainees_energie = [c.create_line(0, 0, 0, 0, fill=FOND, smooth=True, width=1) for _ in range(7)]
         # Anneau lumineux : polygones lissés pour pouvoir onduler avec la voix (écoute et parole)
         # Compte à rebours : arc lumineux autour du visage et grands chiffres (cachés hors décompte)
-        self.decompte = None   # (fin monotonic, total) ; la sonnerie fait clignoter « 00:00 »
-        self.sonnerie, self.acquitte = False, False
-        self.arcs_decompte = [c.create_arc(0, 0, 0, 0, start=90, extent=0, style="arc", outline=FOND, width=w,
-                                           state="hidden") for w in (16, 7, 2)]
+        self.decomptes = []    # [(fin monotonic, total, couleur, nom)] : jusqu'à 3 minuteurs, un anneau chacun
+        self.sonnerie, self.acquitte = False, False  # sonnerie : (couleur, nom) du minuteur qui sonne
+        self.arcs_decompte = [[c.create_arc(0, 0, 0, 0, start=90, extent=0, style="arc", outline=FOND, width=w,
+                                            state="hidden") for w in (14, 6, 2)] for _ in range(3)]
         # Rédaction d'un document : feuille lumineuse dont les lignes s'écrivent, étiquette du format
         self.redaction_format, self._t_redaction = None, 0.0
         self.feuille = c.create_polygon(0, 0, 0, 0, 0, 0, fill="", outline=FOND, width=2, state="hidden")
@@ -215,6 +215,10 @@ class Hologramme:
         self.action = c.create_text(s / 2, 26, text="", fill="#ffffff", font=("Consolas", 9))
         self.chiffres_decompte = [c.create_text(s / 2, s * 0.86, text="", fill=FOND, state="hidden",
                                                 font=("Helvetica", 44, "bold")) for _ in range(2)]
+        self.nom_decompte = c.create_text(s / 2, s * 0.775, text="", fill=FOND, state="hidden",
+                                          font=("Helvetica", 11, "bold"))
+        self.autres_decomptes = [c.create_text(0, s * 0.945, text="", fill=FOND, state="hidden",
+                                               font=("Helvetica", 11, "bold")) for _ in range(2)]
         self.texte = c.create_text(s / 2, s + 18, text="", fill="#ffffff", font=("Consolas", 11))
         # Tâche en cours : texte en petit et barre de progression (masqués quand rien n'est en cours)
         self.statut_texte, self.statut_fraction = "", None
@@ -358,33 +362,65 @@ class Hologramme:
         c.itemconfigure(self.etiquette_feuille, text=self.redaction_format, fill=teinte, state="normal")
 
     def _afficher_decompte(self, cx, cy, echelle):
-        """Arc qui se vide autour du visage, chiffres géants lumineux ; dernières secondes en rouge
-        qui palpitent, puis « 00:00 » qui clignote pendant la sonnerie."""
+        """Un anneau lumineux par minuteur (sa couleur), qui se vide ; le plus proche de la fin en grands chiffres
+        avec son nom, les autres en petit dessous. Dernières secondes qui palpitent, puis « 00:00 » qui clignote
+        dans la couleur du minuteur qui sonne."""
         from .minuteur import affichage
-        c, t = self.toile, self.t
-        if not self.decompte and not self.sonnerie:
-            for item in self.arcs_decompte + self.chiffres_decompte:
+        c, t, s = self.toile, self.t, self.taille
+        tous = [item for anneau in self.arcs_decompte for item in anneau] + self.chiffres_decompte \
+            + [self.nom_decompte] + self.autres_decomptes
+        if not self.decomptes and not self.sonnerie:
+            for item in tous:
                 c.itemconfigure(item, state="hidden")
             return
-        restant, total = ((self.decompte[0] - time.monotonic(), self.decompte[1]) if self.decompte else (0, 1))
-        part = max(0.0, min(1.0, restant / total))
-        fin = restant <= 10
-        teinte = melange("#4ff4ff", "#ffb13c", 1 - part) if not fin else melange("#ff8a3c", "#ff2d2d", 1 - restant / 10)
-        palpite = 0.5 + 0.5 * math.sin(t * (9 if fin else 3))
+        maintenant = time.monotonic()
+        actifs = sorted(self.decomptes, key=lambda d: d[0])  # le plus proche de la fin d'abord
+        for k, anneau in enumerate(self.arcs_decompte):
+            if k >= len(actifs) and not (self.sonnerie and k == len(actifs)):
+                for item in anneau:
+                    c.itemconfigure(item, state="hidden")
+                continue
+            if k < len(actifs):
+                fin, total, couleur, _ = actifs[k]
+                restant = fin - maintenant
+                part = max(0.0, min(1.0, restant / total))
+                teinte = couleur if restant > 10 else melange(couleur, "#ff2d2d", 1 - restant / 10)
+                palpite = 0.5 + 0.5 * math.sin(t * (9 if restant <= 10 else 3))
+            else:  # anneau plein qui clignote : le minuteur qui sonne
+                part, teinte = 1.0, self.sonnerie[0]
+                palpite = 1.0 if int(t * 3) % 2 else 0.15
+            r = echelle * (1.08 + 0.07 * k)  # anneaux concentriques, qui tiennent dans la fenêtre
+            for n, item in enumerate(anneau):  # halo large, trait, filet clair
+                force = (0.25, 0.75, 1.0)[n] * (0.55 + 0.45 * palpite)
+                c.coords(item, cx - r, cy - r, cx + r, cy + r)
+                c.itemconfigure(item, extent=-359.9 * part, state="normal",
+                                outline=melange(FOND, melange(teinte, "#ffffff", 0.4 * n / 2), force))
+        # grands chiffres : le minuteur qui sonne, sinon le plus proche de la fin
         if self.sonnerie:
-            teinte, palpite = "#ff3b3b", 1.0 if int(t * 3) % 2 else 0.15
-        r = echelle * 1.18
-        for k, item in enumerate(self.arcs_decompte):  # halo large et flou, trait, filet clair
-            force = (0.25, 0.75, 1.0)[k] * (0.55 + 0.45 * palpite)
-            c.coords(item, cx - r, cy - r, cx + r, cy + r)
-            c.itemconfigure(item, extent=-359.9 * (part if not self.sonnerie else 1), state="normal",
-                            outline=melange(FOND, melange(teinte, "#ffffff", 0.4 * k / 2), force))
-        taille = int(44 * (1 + (0.12 * palpite if fin or self.sonnerie else 0)))
-        texte = affichage(restant)
+            texte, teinte, nom = "00:00", self.sonnerie[0], self.sonnerie[1]
+            palpite, grossit = (1.0 if int(t * 3) % 2 else 0.15), 1.12
+        else:
+            fin, _, teinte, nom = actifs[0]
+            restant = fin - maintenant
+            texte, palpite = affichage(restant), 0.5 + 0.5 * math.sin(t * (9 if restant <= 10 else 3))
+            grossit = 1 + 0.12 * palpite if restant <= 10 else 1
         for k, item in enumerate(self.chiffres_decompte):  # lueur décalée derrière, chiffres nets devant
-            c.coords(item, self.taille / 2 + (2 if not k else 0), self.taille * 0.86 + (2 if not k else 0))
-            c.itemconfigure(item, text=texte, state="normal", font=("Helvetica", taille, "bold"),
+            c.coords(item, s / 2 + (2 if not k else 0), s * 0.86 + (2 if not k else 0))
+            c.itemconfigure(item, text=texte, state="normal", font=("Helvetica", int(44 * grossit), "bold"),
                             fill=melange(FOND, teinte, 0.45 if not k else 0.6 + 0.4 * palpite))
+        c.itemconfigure(self.nom_decompte, text=(nom or "").upper(), fill=melange(FOND, teinte, 0.9),
+                        state="normal" if nom else "hidden")
+        # les autres minuteurs, en petit sous les grands chiffres, chacun dans sa couleur
+        autres = actifs if self.sonnerie else actifs[1:]
+        for k, item in enumerate(self.autres_decomptes):
+            if k >= len(autres):
+                c.itemconfigure(item, state="hidden")
+                continue
+            fin, _, couleur, nom = autres[k]
+            x = s / 2 + (0 if len(autres) == 1 else (-1 if k == 0 else 1) * s * 0.2)
+            c.coords(item, x, s * 0.945)
+            c.itemconfigure(item, text=f"{(nom or '').upper()} {affichage(fin - maintenant)}".strip(),
+                            fill=couleur, state="normal")
 
     def _couper(self, texte):
         """Lignes qui tiennent dans la largeur de la fenêtre (mesurées avec la vraie police si possible)."""
