@@ -670,7 +670,11 @@ class Cerveau(Publications, Documents):
             return self._chercher_publications(m.group(1), t)
 
         # --- Émission vidéo du mois (vidéothèque du site de l'éditeur), ouverte à l'écran ---
-        if re.search(r"\b(broadcasting|broad casting|teled\w+|emissions? (?:du mois|mensuelles?)|programme mensuel)\b", t):
+        # seulement dans le contexte JW : « broadcasting », « télédiffusion », ou « JW » (souvent transcrit
+        # « j w », « ji double vé ») avec « émission » / « programme mensuel » — pas une émission de télé quelconque
+        jw = r"\b(?:jw|j w|ji? double ve?|jay double you|broadcasting|broad casting|teled\w+)\b"
+        if re.search(jw, t) and re.search(r"\b(broadcasting|broad casting|teled\w+|emissions?|programmes? mensuels?|"
+                                          r"mois|video)\b", t):
             return self._emission(t)
 
         # --- Questions bibliques : base externe, source donnée seulement sur demande ---
