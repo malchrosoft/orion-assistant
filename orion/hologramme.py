@@ -15,8 +15,10 @@ Léger : toutes les formes sont créées une fois puis déplacées (coords/itemc
 import json
 import math
 import random
+import re
 import subprocess
 import sys
+import time
 import tkinter as tk
 
 COULEURS = {  # (points, halo) — les transitions sont fondues
@@ -27,6 +29,10 @@ COULEURS = {  # (points, halo) — les transitions sont fondues
     "execution": ("#b77bff", "#40148c"),  # agit (téléchargement, installation…) : violet
 }
 ROUGE_PAROLE = "#ff5a3c"
+POLICE_LECTURE = ("Helvetica", 11)
+LIGNES_LECTURE = 4
+CARACTERES_PAR_SECONDE = 14.5  # débit moyen des voix françaises (Piper et système), pour suivre la lecture
+DELAI_VOIX = 0.6               # temps de synthèse avant que la voix ne démarre
 LARGEUR_CAR = {11: 8.2, 9: 6.8}  # largeur approchée d'un caractère Consolas (pixels), par taille de police
 CHAUD = "#ffd8a0"
 SEUIL_NOIR = 28  # sur 255 : en dessous, un pixel du visage est considéré comme du fond (transparent)
@@ -140,11 +146,13 @@ class Hologramme:
     def __init__(self, cfg):
         h = cfg["hologramme"]
         self.taille = s = h["taille"]
+        self.root = tk.Tk()
+        # la fenêtre (hologramme + textes en dessous) doit tenir entière à l'écran, même petit
+        s = self.taille = min(s, self.root.winfo_screenheight() - 170, self.root.winfo_screenwidth() - 40)
         self.etat, self.legende, self.t = "veille", cfg["nom"], 0.0
         self.coeur, self.halo = COULEURS["veille"]
         self.rassemble, self.eclat, self.flou = RASSEMBLEMENT["veille"], ECLAT["veille"], 0.0
         self._legende_cible, self._lettres, self._t_legende = "", 0, 0.0
-        self.root = tk.Tk()
         self.root.title(cfg["nom"])
         self.root.configure(bg=FOND)
         self.root.attributes("-topmost", h["toujours_devant"])
@@ -167,6 +175,11 @@ class Hologramme:
             b["item"] = c.create_oval(0, 0, 0, 0, outline="", fill=FOND, width=1)
         self.trainees_energie = [c.create_line(0, 0, 0, 0, fill=FOND, smooth=True, width=1) for _ in range(7)]
         # Anneau lumineux : polygones lissés pour pouvoir onduler avec la voix (écoute et parole)
+        # Compte à rebours : arc lumineux autour du visage et grands chiffres (cachés hors décompte)
+        self.decompte = None   # (fin monotonic, total) ; la sonnerie fait clignoter « 00:00 »
+        self.sonnerie, self.acquitte = False, False
+        self.arcs_decompte = [c.create_arc(0, 0, 0, 0, start=90, extent=0, style="arc", outline=FOND, width=w,
+                                           state="hidden") for w in (16, 7, 2)]
         self.anneaux = [c.create_polygon(0, 0, 0, 0, 0, 0, fill="", outline=FOND, width=w, smooth=True)
                         for w in (9, 4, 1)]
         self.source_niveau = lambda: 0.0  # volume du micro (0 à 1), branché par la boucle vocale
@@ -190,13 +203,19 @@ class Hologramme:
         # Dernière action menée : une ligne discrète en haut (défile si elle est trop longue)
         self.action_texte, self._t_action = "", 0.0
         # Personne reconnue pendant la conversation : en haut à gauche
-        self.personne_texte = ""
+        self.personne_texte, self.couleur_personne = "", None
         self.personne = c.create_text(8, 10, text="", anchor="w", fill="#ffffff", font=("Consolas", 9))
         self.action = c.create_text(s / 2, 26, text="", fill="#ffffff", font=("Consolas", 9))
+        self.chiffres_decompte = [c.create_text(s / 2, s * 0.86, text="", fill=FOND, state="hidden",
+                                                font=("Helvetica", 44, "bold")) for _ in range(2)]
         self.texte = c.create_text(s / 2, s + 18, text="", fill="#ffffff", font=("Consolas", 11))
         # Tâche en cours : texte en petit et barre de progression (masqués quand rien n'est en cours)
         self.statut_texte, self.statut_fraction = "", None
         self.statut = c.create_text(s / 2, s + 40, text="", fill="#ffffff", font=("Consolas", 9))
+        # Lecture en cours : texte sur 4 lignes en petit, qui remonte au fil de la voix (5 lignes pour le fondu)
+        self.lecture, self._t_lecture, self._lignes = "", 0.0, []
+        self.lignes_lecture = [c.create_text(s / 2, 0, text="", fill=FOND, font=POLICE_LECTURE, state="hidden")
+                               for _ in range(LIGNES_LECTURE + 1)]
         self.barre_fond = c.create_rectangle(s * 0.2, s + 54, s * 0.8, s + 58, outline="", fill=FOND, state="hidden")
         self.barre = c.create_rectangle(s * 0.2, s + 54, s * 0.2, s + 58, outline="", fill=FOND, state="hidden")
 
@@ -217,7 +236,19 @@ class Hologramme:
         c.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
         c.bind("<Button-2>", lambda e: menu.tk_popup(e.x_root, e.y_root))  # macOS
         c.bind("<Double-Button-1>", self._double_clic)
+        self.root.after(50, self._garder_visible)  # au chargement, une fois la taille réelle connue
         self._animer()
+
+    def _garder_visible(self):
+        """Ramène la fenêtre entièrement dans l'écran (au chargement, et après l'avoir déplacée)."""
+        r = self.root
+        r.update_idletasks()
+        l, h = r.winfo_width(), r.winfo_height()
+        sl, sh = r.winfo_screenwidth(), r.winfo_screenheight()
+        x = min(max(0, r.winfo_x()), max(0, sl - l))
+        y = min(max(25, r.winfo_y()), max(0, sh - h - 60))  # barre de menus en haut, Dock / barre des tâches en bas
+        if (x, y) != (r.winfo_x(), r.winfo_y()):
+            r.geometry(f"+{x}+{y}")
 
     def _colorer(self, etat, px_par_unite_cible):
         """Image du visage teintée de la couleur de l'état (plus terne en veille), à l'échelle de l'hologramme."""
@@ -251,9 +282,11 @@ class Hologramme:
         est connue. progression("") efface tout."""
         self.statut_texte, self.statut_fraction = texte, fraction
 
-    def interlocuteur(self, nom):
-        """Personne reconnue (vide : personne). Appelable depuis n'importe quel thread."""
+    def interlocuteur(self, nom, couleur=None):
+        """Personne reconnue (vide : personne) et sa couleur (#rrggbb) : elle teinte le halo et son nom.
+        Appelable depuis n'importe quel thread."""
         self.personne_texte = f"● {nom}" if nom else ""
+        self.couleur_personne = couleur if nom and couleur and re.fullmatch(r"#[0-9a-fA-F]{6}", couleur) else None
 
     def derniere_action(self, texte):
         """Appelable depuis n'importe quel thread."""
@@ -266,6 +299,94 @@ class Hologramme:
         self.etat = etat
         if legende is not None:
             self.legende = legende
+        if etat == "parole" and legende:  # nouvelle lecture : le texte défile au rythme estimé de la voix
+            self.lecture, self._t_lecture, self._lignes = legende, time.monotonic(), []
+        elif etat != "parole":
+            self.lecture = ""
+
+    def _afficher_decompte(self, cx, cy, echelle):
+        """Arc qui se vide autour du visage, chiffres géants lumineux ; dernières secondes en rouge
+        qui palpitent, puis « 00:00 » qui clignote pendant la sonnerie."""
+        from .minuteur import affichage
+        c, t = self.toile, self.t
+        if not self.decompte and not self.sonnerie:
+            for item in self.arcs_decompte + self.chiffres_decompte:
+                c.itemconfigure(item, state="hidden")
+            return
+        restant, total = ((self.decompte[0] - time.monotonic(), self.decompte[1]) if self.decompte else (0, 1))
+        part = max(0.0, min(1.0, restant / total))
+        fin = restant <= 10
+        teinte = melange("#4ff4ff", "#ffb13c", 1 - part) if not fin else melange("#ff8a3c", "#ff2d2d", 1 - restant / 10)
+        palpite = 0.5 + 0.5 * math.sin(t * (9 if fin else 3))
+        if self.sonnerie:
+            teinte, palpite = "#ff3b3b", 1.0 if int(t * 3) % 2 else 0.15
+        r = echelle * 1.18
+        for k, item in enumerate(self.arcs_decompte):  # halo large et flou, trait, filet clair
+            force = (0.25, 0.75, 1.0)[k] * (0.55 + 0.45 * palpite)
+            c.coords(item, cx - r, cy - r, cx + r, cy + r)
+            c.itemconfigure(item, extent=-359.9 * (part if not self.sonnerie else 1), state="normal",
+                            outline=melange(FOND, melange(teinte, "#ffffff", 0.4 * k / 2), force))
+        taille = int(44 * (1 + (0.12 * palpite if fin or self.sonnerie else 0)))
+        texte = affichage(restant)
+        for k, item in enumerate(self.chiffres_decompte):  # lueur décalée derrière, chiffres nets devant
+            c.coords(item, self.taille / 2 + (2 if not k else 0), self.taille * 0.86 + (2 if not k else 0))
+            c.itemconfigure(item, text=texte, state="normal", font=("Helvetica", taille, "bold"),
+                            fill=melange(FOND, teinte, 0.45 if not k else 0.6 + 0.4 * palpite))
+
+    def _couper(self, texte):
+        """Lignes qui tiennent dans la largeur de la fenêtre (mesurées avec la vraie police si possible)."""
+        largeur = self.taille * 0.86
+        try:
+            import tkinter.font as tkfont
+            mesure = tkfont.Font(font=POLICE_LECTURE).measure
+        except Exception:
+            mesure = lambda m: len(m) * 6.5  # noqa: E731 — sans fenêtre (tests)
+        lignes, ligne = [], ""
+        for mot in texte.split():
+            essai = f"{ligne} {mot}".strip()
+            if ligne and mesure(essai) > largeur:
+                lignes.append(ligne)
+                ligne = mot
+            else:
+                ligne = essai
+        return lignes + ([ligne] if ligne else [])
+
+    def _afficher_lecture(self):
+        """4 lignes centrées en bas : la ligne lue en clair, les suivantes plus douces ; le bloc remonte en
+        continu au rythme estimé de la voix (caractères par seconde), la ligne lue restant en 2e position."""
+        c, s, items = self.toile, self.taille, self.lignes_lecture
+        if not self.lecture:
+            for item in items:
+                c.itemconfigure(item, state="hidden")
+            c.itemconfigure(self.statut, state="normal")
+            return
+        c.itemconfigure(self.statut, state="hidden")
+        if not self._lignes:
+            self._lignes = self._couper(self.lecture)
+        lignes = self._lignes
+        lus = max(0.0, (time.monotonic() - self._t_lecture - DELAI_VOIX) * CARACTERES_PAR_SECONDE)
+        position, reste = 0.0, lus  # ligne en cours de lecture (avec la fraction déjà lue)
+        for i, ligne in enumerate(lignes):
+            if reste <= len(ligne) + 1:
+                position = i + reste / (len(ligne) + 1)
+                break
+            reste -= len(ligne) + 1
+        else:
+            position = len(lignes) - 1
+        haut = max(0.0, min(position - 1, len(lignes) - LIGNES_LECTURE)) if len(lignes) > LIGNES_LECTURE else 0.0
+        premier, decalage = int(haut), haut - int(haut)
+        y0, pas = s + 6, 15
+        for k, item in enumerate(items):
+            i = premier + k
+            y = y0 + (k - decalage) * pas
+            if i >= len(lignes) or y < y0 - 4 or y > y0 + (LIGNES_LECTURE - 0.6) * pas:
+                c.itemconfigure(item, state="hidden")
+                continue
+            bord = min(1.0, (y - (y0 - 4)) / 10, (y0 + (LIGNES_LECTURE - 0.6) * pas - y) / 10)  # fondu haut/bas
+            proche = max(0.0, 1 - abs(i + 0.5 - position) / 1.5)  # la ligne lue ressort
+            teinte = melange(FOND, melange(self.coeur, "#ffffff", 0.3), (0.35 + 0.65 * proche) * max(0.0, bord))
+            c.coords(item, s / 2, y)
+            c.itemconfigure(item, text=lignes[i], fill=teinte, state="normal")
 
     def _defiler(self, texte, taille_police, depart=0.0):
         """Texte trop long pour la fenêtre : il défile en boucle, comme un bandeau (pause au début)."""
@@ -295,10 +416,14 @@ class Hologramme:
         if not getattr(self, "_deplace", False):  # clic simple, confirmé s'il n'est pas suivi d'un second clic
             self._clic_prevu = self.root.after(260, self._clic_simple)
         else:
+            self._garder_visible()
             self.sur_deplacement()
 
     def _clic_simple(self):
         self._clic_prevu = None
+        if self.sonnerie:  # un clic pendant la sonnerie l'arrête (Orion n'a pas besoin de l'annoncer)
+            self.sonnerie, self.acquitte = False, True
+            return
         self.sur_clic()
 
     def _double_clic(self, e):
@@ -318,6 +443,8 @@ class Hologramme:
         else:
             cx, cy = s * 0.52, s * 0.47
         cible_point, cible_halo = COULEURS[etat]
+        if self.couleur_personne:  # la couleur de la personne reconnue baigne le halo ; l'état reste lisible
+            cible_halo = melange(cible_halo, melange(FOND, self.couleur_personne, 0.55), 0.7)
         if etat == "parole":  # dégradé doré ↔ rouge qui respire pendant qu'Orion parle
             cible_point = melange(cible_point, ROUGE_PAROLE, 0.5 + 0.5 * math.sin(t * 2.2))
         self.coeur = melange(self.coeur, cible_point, 0.12)
@@ -445,6 +572,8 @@ class Hologramme:
                 else:
                     c.coords(self.trainees[i], 0, 0, 0, 0)
 
+        self._afficher_decompte(cx, cy, echelle)
+
         # Balayage horizontal façon projection holographique
         y = (t * 60) % s
         c.coords(self.balayage, cx - s * 0.42, y, cx + s * 0.42, y)
@@ -458,9 +587,11 @@ class Hologramme:
         texte = self.legende[:self._lettres].upper() + curseur
         if self._lettres >= len(self.legende):  # écrit en entier : défile s'il dépasse la fenêtre
             texte = self._defiler(self.legende.upper(), 11, self._t_legende + len(self.legende) * 0.02)
-        c.itemconfigure(self.texte, text=texte, fill=melange(self.coeur, "#ffffff", 0.2))
+        c.itemconfigure(self.texte, text="" if self.lecture else texte, fill=melange(self.coeur, "#ffffff", 0.2))
+        self._afficher_lecture()
 
-        c.itemconfigure(self.personne, text=self.personne_texte, fill=melange(FOND, self.coeur, 0.8))
+        c.itemconfigure(self.personne, text=self.personne_texte,
+                        fill=self.couleur_personne or melange(FOND, self.coeur, 0.8))
         c.itemconfigure(self.action, text=self._defiler(self.action_texte, 9, self._t_action),
                         fill=melange(FOND, COULEURS["veille"][0], 0.55))
 
