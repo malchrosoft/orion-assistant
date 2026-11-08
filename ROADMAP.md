@@ -2,13 +2,6 @@
 
 Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » à « Fait » au fil des versions.
 
-## En cours
-
-- **Programme de la semaine lu à voix haute** : lire le programme d'une publication hebdomadaire téléchargée
-  (parties et durées) au lieu d'ouvrir le fichier, avec l'affichage défilant de l'hologramme.
-- **« Oui » pris pour un écho** : ne plus commencer les saluts par « Oui », et réserver le filtre d'écho
-  aux phrases d'au moins trois mots (le micro est déjà coupé pendant qu'Orion parle).
-
 ## À faire
 
 ### Temps et organisation
@@ -26,6 +19,17 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
   100 à 500 Mo) : la recherche actuelle par mots manque les passages qui n'emploient pas les mêmes mots.
 - **Autres publications reconnues à la voix** : compléter la liste au fil des besoins.
 
+### Compétences ajoutées (skills)
+- **Ajouter des compétences depuis le panneau** : indiquer l'emplacement d'un dossier de compétences
+  (fichiers `SKILL.md` : nom, description, méthode), qu'Orion garde en mémoire et relit au démarrage.
+- **Les indexer** : nom, description et mots-clés dans l'index local, pour retrouver la compétence adaptée
+  à une demande (« fais une recherche… », « prépare un plan… »).
+- **Les utiliser automatiquement** : quand une demande correspond, Orion annonce la compétence choisie,
+  suit sa méthode avec le modèle local, et respecte ses propres règles (accord avant internet, sources
+  citées, rien d'exécuté sur l'ordinateur sans confirmation). Une compétence n'élargit jamais ses droits.
+- **Les gérer** : liste dans le panneau, activer/désactiver, retirer ; question à la voix « quelles
+  compétences as-tu ? ».
+
 ### Langues
 - **Tenir compte de la langue de discussion** partout où Orion va chercher quelque chose :
   - **Météo** : noms de villes et bulletin dans la langue de discussion (le service de géocodage accepte
@@ -34,6 +38,11 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
     à chaque langue installée), avec repli sur le français si l'édition n'existe pas ; ouvrir la page de
     recherche du site dans la bonne langue ; textes du jour, versets et programmes lus dans cette langue
     (noms des livres, jours et mois propres à chaque langue).
+  - **Programme de la semaine** : reconnaître les semaines (« 16-22 novembre », « November 16-22 »…), les
+    durées (« min ») et les rubriques dans chaque langue, et lire le programme avec les tournures de la
+    langue de discussion (« Programme de la semaine du… », « minutes », « Lecture de la semaine »).
+  - **Demandes à la voix** : vocabulaire des réunions, des publications et des comptes à rebours dans
+    chaque langue (aujourd'hui seulement en français), et fiches de capacités traduites.
   - **Index local** : une entrée par langue, pour ne pas mélanger les éditions.
 
 ### Voix et reconnaissance
@@ -46,6 +55,18 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
 
 ## Fait récemment
 
+- Document tiré de la dernière réponse, à la demande : Word (.docx), Markdown, page web (.html) ou PDF,
+  avec la question, la réponse et ses sources ; sans dépendance supplémentaire.
+- « Sur les épaules de géants » : comment d'autres ont déjà résolu un problème, d'après des sources
+  ouvertes (Wikipédia, catalogue scientifique OpenAlex), avec accord ; idée fondatrice dite en trois
+  phrases, lignée complète et sources dans une fiche PDF.
+- Orion connaît ses propres capacités (une fiche courte par sujet) : « comment je lance un compte à
+  rebours ? » donne la bonne fiche en deux ou trois phrases, « que sais-tu faire ? » un résumé d'une phrase.
+- Questions sur l'ordinateur, en lecture seule : espace libre, disques, informations système, versions,
+  recherche de fichiers et de dossiers dans le dossier personnel (« ouvre le premier » affiche le dossier).
+- Programme de la semaine lu à voix haute depuis la publication hebdomadaire téléchargée (passage biblique,
+  cantiques, parties et durées) ; « ouvre » affiche le fichier à la place.
+- Réponses courtes (« oui », « non ») jamais prises pour un écho ; saluts qui ne commencent plus par « Oui ».
 - Compte à rebours interne : arc et chiffres sur l'hologramme, 5 bips lents à la fin, puis annonce
   à la personne qui l'a demandé si personne n'a cliqué.
 - Fenêtres entièrement visibles à l'écran au chargement et après un déplacement.
