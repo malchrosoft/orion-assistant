@@ -310,6 +310,7 @@ class Conversation:
             return None
         texte = re.sub(r"<think>.*?</think>", "", texte, flags=re.S).strip()  # Qwen3 : pas de réflexion lue
         texte = re.sub(r"[*_#`]+", "", texte)                                  # pas de mise en forme à l'oral
+        texte = re.sub(r"\s*\([^)]*\)?", "", texte)                          # ni parenthèses (même non fermées)
         texte = re.sub(r"\s+", " ", texte).strip()                              # pas de retours à la ligne
         texte = re.sub(r"^(?:(?:ah|oh|eh bien|bien sûr|absolument|excellente question|quelle (?:belle|bonne) "
                        r"question|bonne question)\s*[,!.…]+\s*)+", "", texte, flags=re.I)  # débuts creux
