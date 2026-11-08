@@ -23,6 +23,21 @@ LIVRES = ["genese", "exode", "levitique", "nombres", "deuteronome", "josue", "ju
           "romains", "1 corinthiens", "2 corinthiens", "galates", "ephesiens", "philippiens", "colossiens",
           "1 thessaloniciens", "2 thessaloniciens", "1 timothee", "2 timothee", "tite", "philemon", "hebreux",
           "jacques", "1 pierre", "2 pierre", "1 jean", "2 jean", "3 jean", "jude", "revelation"]
+ACCENTS = {"genese": "Genèse", "levitique": "Lévitique", "deuteronome": "Deutéronome", "josue": "Josué",
+           "nehemie": "Néhémie", "ecclesiaste": "Ecclésiaste", "isaie": "Isaïe", "jeremie": "Jérémie",
+           "ezechiel": "Ézéchiel", "osee": "Osée", "joel": "Joël", "michee": "Michée", "aggee": "Aggée",
+           "ephesiens": "Éphésiens", "timothee": "Timothée", "philemon": "Philémon", "hebreux": "Hébreux",
+           "revelation": "Révélation"}
+
+
+def nom_livre(livre):
+    """« 1 timothee » → « 1 Timothée » : le nom tel qu'on le dit et l'écrit."""
+    mots = livre.split(" ", 1) if livre[0].isdigit() else ["", livre]
+    nom = ACCENTS.get(mots[1], mots[1][:1].upper() + mots[1][1:])  # « Chant de Salomon » garde ses minuscules
+    nom = nom.replace("salomon", "Salomon")
+    return f"{mots[0]} {nom}".strip()
+
+
 ALIAS = {"psaume": "psaumes", "cantique des cantiques": "chant de salomon", "apocalypse": "revelation",
          "actes des apotres": "actes", "proverbe": "proverbes"}
 ORDINAUX = {"premier": "1", "premiere": "1", "deuxieme": "2", "second": "2", "seconde": "2", "troisieme": "3"}
@@ -40,7 +55,7 @@ WOL = "https://wol.jw.org/fr/wol"
 RUBRIQUES = [
     (r"texte du jour|verset du jour|examinons les ecritures|ecritures chaque jour|texte quotidien|"
      r"texte (de demain|d hier|d aujourd hui)", "jour"),
-    (r"reunions? (de |du |de la )?(semaine|week end|weekend|milieu de semaine|jeudi|dimanche)|vie et ministere|vie chretienne et ministere|cahier( d activites| de reunion)?|"
+    (r"reunions? (de |du |de la )?(semaine|week end|weekend|milieu de semaine|jeudi|dimanche)|vie (et )?ministere|vie chretienne (et )?ministere|cahier( d activites| de reunion)?|"
      r"joyaux|perles spirituelles|applique toi au ministere|etude biblique de l assemblee|"
      r"tour de garde( d etude)?|etude de la tour de garde|discours public|"
      r"lecture biblique de la semaine|programme de la semaine|cantiques? de la semaine", "semaine"),

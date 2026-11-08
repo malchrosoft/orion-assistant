@@ -55,6 +55,8 @@ def demande(t):
     for motif, code in SIMPLES:
         if re.search(motif, t):
             return [(code, "")]
+    if ajoutee(t):
+        return [ajoutee(t)]
     return None
 
 
@@ -87,6 +89,7 @@ def telecharger(pub, dossier):
             while bloc := r.read(1 << 20):
                 f.write(bloc)
         provisoire.rename(chemin)
+    indexer([dossier])  # entrées consultables aussitôt (recherche par thème)
     return chemin
 
 
@@ -104,29 +107,45 @@ def fichier_local(code, dossiers_possibles):
     return None
 
 
-def texte_du_jour(epub, date):
+def texte_du_jour(epub, date, page_lue=None):
     """(titre, verset, commentaire) du jour dans un fichier « Examinons les Écritures » de l'utilisateur.
     Lu pour l'utilisateur seul, sur son ordinateur, comme le ferait la lecture à voix haute d'une liseuse."""
     import html
     import zipfile
-    jour = f"{JOURS_SEMAINE[date.weekday()]} {date.day}(?:er)? {MOIS_ACCENTS[date.month - 1]}"
-    with zipfile.ZipFile(epub) as z:
-        for nom in z.namelist():
-            if not nom.endswith(".xhtml"):
-                continue
-            page = z.read(nom).decode("utf-8", "replace")
-            if not re.search(rf"<title>\s*{jour}\s*</title>", page, re.I):
-                continue
+    jour = (f"{JOURS_SEMAINE[date.weekday()]} {date.day}(?:er)? {MOIS_ACCENTS[date.month - 1]}" if date
+            else "(?:" + "|".join(JOURS_SEMAINE) + r") \d+(?:er)? \w+")
 
-            def texte(fragment):
-                fragment = re.sub(r"<[^>]+>", "", fragment)
-                return re.sub(r"\s+", " ", html.unescape(fragment)).strip()
-            titre = texte(re.search(r"<title>(.*?)</title>", page, re.S).group(1))
-            verset = re.search(r'class="themeScrp">(.*?)</p>', page, re.S)
-            corps = re.search(r'class="bodyTxt">(.*?)</div>', page, re.S)
-            return (titre, texte(verset.group(1)) if verset else "",
-                    " ".join(texte(p) for p in re.findall(r"<p[^>]*>(.*?)</p>", corps.group(1), re.S)) if corps else "")
+    def pages():
+        if page_lue is not None:
+            yield page_lue
+            return
+        with zipfile.ZipFile(epub) as z:
+            for nom in z.namelist():
+                if nom.endswith(".xhtml"):
+                    yield z.read(nom).decode("utf-8", "replace")
+    for page in pages():
+        if not re.search(rf"<title>\s*{jour}\s*</title>", page, re.I):
+            continue
+
+        def texte(fragment):
+            fragment = re.sub(r"<[^>]+>", "", fragment)
+            return re.sub(r"\s+", " ", html.unescape(fragment)).strip()
+        titre = texte(re.search(r"<title>(.*?)</title>", page, re.S).group(1))
+        verset = re.search(r'class="themeScrp">(.*?)</p>', page, re.S)
+        corps = re.search(r'class="bodyTxt">(.*?)</div>', page, re.S)
+        return (titre, texte(verset.group(1)) if verset else "",
+                " ".join(texte(p) for p in re.findall(r"<p[^>]*>(.*?)</p>", corps.group(1), re.S)) if corps else "")
     return None
+
+
+def _nettoyer(extrait):
+    """Fragment XHTML → texte à lire : sans appels de note, numéros de verset ni balises."""
+    import html
+    extrait = re.sub(r'<a epub:type="noteref"[^>]*>.*?</a>', "", extrait)   # appels de note « * »
+    extrait = re.sub(r"<sup>.*?</sup>|<span class=\"w_ch\">.*?</span>", " ", extrait)  # numéros
+    extrait = re.sub(r"<[^>]+>|^[^>]*>", " ", extrait)
+    texte = re.sub(r"\s+", " ", html.unescape(extrait).replace("\u200b", ""))
+    return re.sub(r"\s+([,.])", r"\1", texte).strip(" ,;")
 
 
 _CHAPITRES = {}  # fichier EPUB de la Bible → {« jean 3 » : nom de la page}, construit à la première lecture
@@ -158,10 +177,207 @@ def verset(epub, livre, chapitre, debut, fin=None):
             notes = re.search(r"<aside|<footer|epub:type=\"footnote\"", page[depart:])  # fin du chapitre
             fin_chapitre = depart + notes.start() if notes else page.find("</body>", depart)
             arret = fin_chapitre if arret < 0 else page.rfind("<", depart, min(arret, fin_chapitre) + 1)
-            extrait = page[depart:arret]
-            extrait = re.sub(r'<a epub:type="noteref"[^>]*>.*?</a>', "", extrait)   # appels de note « * »
-            extrait = re.sub(r"<sup>.*?</sup>|<span class=\"w_ch\">.*?</span>", " ", extrait)  # numéros
-            extrait = re.sub(r"<[^>]+>|^[^>]*>", " ", extrait)
-            texte = re.sub(r"\s+", " ", html.unescape(extrait).replace("\u200b", ""))
-            return re.sub(r"\s+([,.])", r"\1", texte).strip()
+            return _nettoyer(page[depart:arret])
+    return None
+
+
+# --- Index de recherche (local) : « que dit la Bible sur le pardon ? » ------------------------------------------
+def _base():
+    import sqlite3
+    from .config import DONNEES
+    db = sqlite3.connect(DONNEES / "publications.db")
+    db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(publication, lieu, texte, "
+               "tokenize='unicode61 remove_diacritics 2')")
+    db.execute("CREATE TABLE IF NOT EXISTS fichiers (nom TEXT PRIMARY KEY, date REAL)")
+    return db
+
+
+def _passages(epub):
+    """[(lieu, texte)] : un verset par ligne pour la Bible, un jour pour « Examinons », un paragraphe sinon."""
+    import html
+    import zipfile
+    from . import bible
+    from .texte import normaliser
+    code = epub.stem.split("_")[0]
+    with zipfile.ZipFile(epub) as z:
+        for nom in z.namelist():
+            if not nom.endswith(".xhtml") or "extracted" in nom:
+                continue
+            page = z.read(nom).decode("utf-8", "replace")
+            m = re.search(r"<title>(.*?)</title>", page, re.S)
+            titre = _nettoyer(m.group(1)) if m else ""
+            notes = re.search(r"<aside|<footer|epub:type=\"footnote\"", page)
+            page = page[:notes.start()] if notes else page
+            if code == "nwt":
+                livre = re.sub(r"\s*\d+$", "", normaliser(html.unescape(titre)))
+                livre = re.sub(r"^psaume\b", "psaumes", livre)
+                morceaux = re.split(r'<span id="chapter(\d+)_verse(\d+)"></span>', page)
+                for i in range(1, len(morceaux) - 2, 3):
+                    texte = _nettoyer(morceaux[i + 2])
+                    if texte and livre in bible.LIVRES:
+                        yield f"{bible.nom_livre(livre)} {morceaux[i]}:{morceaux[i + 1]}", texte
+            elif code.startswith("es"):
+                r = texte_du_jour(epub, None, page)
+                if r:
+                    yield f"texte du {r[0][0].lower() + r[0][1:]}", f"{r[1]} {r[2]}"
+            else:
+                for para in re.findall(r"<p[^>]*>(.*?)</p>", page, re.S):
+                    texte = _nettoyer(para)
+                    if len(texte) > 60:
+                        yield titre, texte
+
+
+def indexer(dossiers_possibles):
+    """Indexe les EPUB téléchargés pas encore indexés (ou modifiés). Renvoie le nombre de fichiers traités."""
+    db, traites = _base(), 0
+    for dossier in dossiers_possibles:
+        for epub in sorted(dossier.glob("*_F*.epub")) if dossier.exists() else []:
+            date = epub.stat().st_mtime
+            deja = db.execute("SELECT date FROM fichiers WHERE nom = ?", (epub.name,)).fetchone()
+            if deja and deja[0] == date:
+                continue
+            db.execute("DELETE FROM passages WHERE publication = ?", (epub.stem,))  # « nwt_F », « w_F_202609 »
+            db.executemany("INSERT INTO passages VALUES (?, ?, ?)", ((epub.stem, l, t) for l, t in _passages(epub)))
+            db.execute("INSERT OR REPLACE INTO fichiers VALUES (?, ?)", (epub.name, date))
+            db.commit()
+            traites += 1
+    db.close()
+    return traites
+
+
+def rechercher(sujet, publication=None, limite=3):
+    """[(lieu, texte)] les plus pertinents pour `sujet` (mots ou débuts de mots : « pardon » → « pardonner »)."""
+    from .knowledge import VIDES
+    from .texte import normaliser
+    questions = {"pourquoi", "quand", "qui", "quoi", "etait", "etaient", "dit", "dire", "bible", "biblique",
+                 "verset", "versets", "parle", "parlent", "parlait", "cherche", "publications", "lis", "lire"}
+    mots = [m for m in normaliser(sujet).split() if m not in VIDES | questions and len(m) > 2]
+    if not mots:
+        return []
+    db = _base()
+    filtre = " AND publication LIKE ?" if publication else ""  # « es » : tous les livrets d'Examinons
+    try:
+        for liaison in (" AND ", " OR "):  # d'abord tous les mots, sinon l'un d'eux
+            # débuts de mots : « pardon » trouve « pardonnez » ; les mots longs perdent leur terminaison
+            requete = "texte : (" + liaison.join(f'"{m if len(m) < 7 else m[:-2]}"*' for m in mots) + ")"
+            lignes = db.execute(f"SELECT lieu, texte FROM passages WHERE passages MATCH ?{filtre} "
+                                "ORDER BY rank LIMIT ?", (requete, *([publication + "%"] if publication else []), limite)).fetchall()
+            if lignes:
+                return lignes
+        return []
+    finally:
+        db.close()
+
+
+# --- Publications choisies par l'utilisateur sur jw.org (méthode indiquée par le site) -----------------------
+# Orion ne cherche pas lui-même dans le site : il ouvre la page de recherche publique dans le navigateur ;
+# l'utilisateur choisit la publication et lui donne le lien de téléchargement (bouton « Partager » / fenêtre de
+# téléchargement), que les conditions d'utilisation permettent de partager.
+RECHERCHE = "https://www.jw.org/fr/rechercher/?q="
+
+
+def _ajoutees():
+    from .config import DONNEES
+    f = DONNEES / "publications_ajoutees.json"
+    return f, (json.loads(f.read_text(encoding="utf-8")) if f.exists() else {})
+
+
+def depuis_lien(lien):
+    """(code, numéro) lus dans un lien jw.org (lien de téléchargement ou de partage), ou None."""
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(lien.strip()).query)
+    code = (q.get("pub") or q.get("pubSym") or [None])[0]
+    return (code, (q.get("issue") or [""])[0]) if code and re.fullmatch(r"[\w-]{1,20}", code) else None
+
+
+def retenir(pub, code, numero=""):
+    """Ajoute la publication à la liste d'Orion : on pourra ensuite la demander par son titre."""
+    from .texte import normaliser
+    fichier, data = _ajoutees()
+    data[normaliser(re.split(r"[(:]", pub["titre"])[0])] = [code, numero]
+    fichier.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def ajoutee(t):
+    """Publication ajoutée par l'utilisateur dont le titre est cité dans la phrase, ou None."""
+    for titre, (code, numero) in sorted(_ajoutees()[1].items(), key=lambda x: -len(x[0])):
+        if titre and titre in t:
+            return code, numero
+    return None
+
+
+def presse_papiers():
+    """Texte copié (lien de téléchargement), selon le système ; chaîne vide si indisponible."""
+    import platform
+    import subprocess
+    commandes = {"Darwin": [["pbpaste"]], "Windows": [["powershell", "-NoProfile", "-Command", "Get-Clipboard"]],
+                 "Linux": [["wl-paste", "-n"], ["xclip", "-selection", "clipboard", "-o"]]}
+    for cmd in commandes.get(platform.system(), []):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return ""
+
+
+def verifier(dossiers_possibles):
+    """Au démarrage : chaque EPUB téléchargé s'ouvre-t-il ? L'index ne garde que les fichiers présents.
+    Renvoie {« valides »: n, « corrompus »: [noms], « disparus »: [noms]} ; les fichiers abîmés sont mis de
+    côté (« .corrompu ») pour être retéléchargés, jamais supprimés."""
+    import zipfile
+    bilan = {"valides": 0, "corrompus": [], "disparus": []}
+    presents = set()
+    for dossier in dossiers_possibles:
+        if not dossier.exists():
+            continue
+        for reste in dossier.glob("*_F*.partiel"):  # téléchargement interrompu
+            reste.unlink(missing_ok=True)
+        for epub in dossier.glob("*_F*.epub"):
+            try:
+                with zipfile.ZipFile(epub) as z:
+                    if z.testzip() is not None or not any(n.endswith(".xhtml") for n in z.namelist()):
+                        raise zipfile.BadZipFile
+                presents.add(epub.stem)
+                bilan["valides"] += 1
+            except (zipfile.BadZipFile, OSError):
+                epub.rename(epub.with_suffix(".epub.corrompu"))
+                bilan["corrompus"].append(epub.name)
+    db = _base()
+    for (nom,) in db.execute("SELECT nom FROM fichiers").fetchall():
+        stem = nom.rsplit(".", 1)[0]
+        if stem not in presents:  # fichier supprimé ou abîmé : ses entrées quittent l'index
+            db.execute("DELETE FROM passages WHERE publication = ?", (stem,))
+            db.execute("DELETE FROM fichiers WHERE nom = ?", (nom,))
+            bilan["disparus"].append(nom)
+    db.commit()
+    db.close()
+    indexer(dossiers_possibles)
+    return bilan
+
+
+def programme_semaine(epub, date):
+    """Programme de la réunion de semaine (cahier Vie et ministère téléchargé) pour la semaine de `date` :
+    (titre de la semaine, [parties « titre, durée »]) ou None. Lu pour l'utilisateur seul, chez lui."""
+    import zipfile
+    lundi = date - datetime.timedelta(days=date.weekday())
+    mois = MOIS_ACCENTS[lundi.month - 1]
+    debut = rf"^{lundi.day}(?:er)?(?: {mois}(?: \d{{4}})?)?\s*[-–]"
+    with zipfile.ZipFile(epub) as z:
+        for nom in z.namelist():
+            if not nom.endswith(".xhtml") or "extracted" in nom:
+                continue
+            page = z.read(nom).decode("utf-8", "replace")
+            m = re.search(r"<title>(.*?)</title>", page, re.S)
+            if not m or not re.search(debut, _nettoyer(m.group(1)), re.I):
+                continue
+            notes = re.search(r"<aside|<footer|epub:type=\"footnote\"", page)
+            page = page[:notes.start()] if notes else page
+            parties = []
+            for titre, suite in re.findall(r"<h[1-6][^>]*>(.*?)</h[1-6]>(.{0,300})", page, re.S):
+                titre = _nettoyer(titre)
+                duree = re.search(r"\((\d+) min\)", titre + _nettoyer(suite))
+                titre = re.sub(r"\s*\(\d+ min\)", "", titre).replace(" | ", ", ")
+                if titre and not titre.isupper() or re.match(r"^[A-ZÉÈ]", titre):
+                    parties.append(titre[:1] + titre[1:].lower() if titre.isupper() else titre
+                                   + (f", {duree.group(1)} minutes" if duree and duree.group(1) not in titre else ""))
+            return _nettoyer(m.group(1)), parties[1:]  # la 1re « partie » est le titre de la semaine
     return None

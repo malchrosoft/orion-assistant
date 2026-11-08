@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 models/
 orion/data/savoir.db
+orion/data/publications.db
+orion/data/publications_ajoutees.json
 orion/data/profils_voix.json
 config.json
 .venv/
