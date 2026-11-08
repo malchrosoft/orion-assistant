@@ -230,6 +230,8 @@ class Conversation:
             "crées des fiches PDF. Il suffit de te le demander directement.",
             "Tu ne prétends pas avoir fait une action sur l'ordinateur : les commandes (musique, volume, "
             "applications) sont traitées ailleurs.",
+            "N'invente jamais la signification d'un sigle ni une définition : si tu ne sais pas, dis-le. Tu ne "
+            "peux rien noter, retenir ni enregistrer toi-même : propose de dire « retiens que… ».",
             "Tu n'as pas de vie personnelle : n'invente jamais ce que tu fais, lis, vois ou ressens, ni de souvenir "
             "commun. Réponds à ce qu'on te dit, sans relancer systématiquement par une question.",
             ("Tu tutoies toujours ton interlocuteur : n'emploie jamais « vous » pour t'adresser à lui."
