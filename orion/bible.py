@@ -75,7 +75,7 @@ def reference(t):
     for alias, livre in ALIAS.items():
         t = re.sub(rf"\b{alias}\b", livre, t)
     for i in sorted(range(len(LIVRES)), key=lambda i: -len(LIVRES[i])):
-        m = re.search(rf"\b{LIVRES[i]}\s+(?:chapitre\s+)?(\d+)\s*(?:verset\s+|[:.,]\s*)?(\d+)?", t)
+        m = re.search(rf"\b{LIVRES[i]}\s+(?:chapitre\s+)?(\d+)\s*(?:versets?\s+|[:.,]\s*)?(\d+)?", t)
         if m:
             return f"{i + 1:02d}{int(m.group(1)):03d}{int(m.group(2) or 1):03d}"
     return None

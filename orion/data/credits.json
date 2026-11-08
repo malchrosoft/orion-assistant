@@ -129,6 +129,14 @@
    "motscles": "wikipedia encyclopedie base externe"
   },
   {
+   "nom": "Open-Meteo",
+   "role": "la météo dite à voix haute",
+   "auteurs": "Open-Meteo et les services météorologiques nationaux",
+   "licence": "CC BY 4.0",
+   "url": "https://open-meteo.com",
+   "motscles": "meteo open meteo previsions temps"
+  },
+  {
    "nom": "PyInstaller et Inno Setup",
    "role": "la fabrication des installateurs",
    "auteurs": "équipe PyInstaller ; Jordan Russell et Martijn Laan",

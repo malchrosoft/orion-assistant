@@ -35,14 +35,17 @@ DEFAUT = {
     "formules_eveil": ["hey", "he", "eh", "et", "dis", "dit", "di", "j", "ok"],  # « hey Orion », « dis Orion » (+ transcriptions)
     "modele_vosk": "models/vosk-model-small-fr-0.22",
     "modele_locuteur": "models/vosk-model-spk-0.4",
-    "seuil_locuteur": 0.55,
-    "confiance_min": 0.6,                # en dessous, Orion dit « je n'ai pas bien compris » au lieu de répondre              # similarité cosinus minimale pour reconnaître quelqu'un
+    "seuil_locuteur": 0.55,              # similarité cosinus minimale pour reconnaître quelqu'un
+    "bip_ecoute": True,                  # petit carillon quand Orion se met à écouter
+    "phrases_max": 2,                    # longueur maximale d'une réponse de conversation, en phrases
+    "confiance_min": 0.6,                # en dessous, Orion dit « je n'ai pas bien compris » au lieu de répondre
     "voix_vitesse": 175,
     "langue": "fr",                      # langue de la voix d'Orion (la compréhension reste en français)
     "langue_confirmee": False,           # au premier lancement, Orion demande confirmation à voix haute
     "voix_piper": "",                    # voix naturelle Piper (siwis, jessica, pierre, gilles) ; vide = voix système
     "voix_id": "",                       # voix choisie dans le panneau ; vide = première voix de la langue
     "limite_disque_mo": 1024,            # espace maximal des données d'Orion (hors documents générés)
+    "sites_libres": ["wikipedia", "jw", "meteo"],  # consultés sans demander l'accord, rien n'est stocké
     "dossiers": {},                      # {mot-clé: chemin} où enregistrer les PDF ; vide = Documents/Orion
     "dossier_defaut": "documents",            # espace maximal occupé par Orion (réglable au panneau / en commande)
     "langue_discussion": "fr",           # langue dans laquelle on parle à Orion (voir onglet Langues)

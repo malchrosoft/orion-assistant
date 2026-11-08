@@ -6,13 +6,17 @@ import datetime
 import json
 import math
 import operator
+import os
 import random
 import re
+import urllib.parse
+import urllib.request
+from pathlib import Path
 
-from . import bible, dossiers, espace, knowledge, personnes, web
+from . import bible, dossiers, espace, knowledge, meteo, personnes, publications, web
 from .conversation import Conversation
 from .persona import presentation
-from .texte import normaliser, sans_accents
+from .texte import chiffres, normaliser, sans_accents
 
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
@@ -33,7 +37,8 @@ FACTUELLE = (r"\b(c est quoi|qu est ce que|qu est ce qu|qui est|qui etait|qui a 
              r"quand (a|est|etait|ont)|en quelle annee|combien (de|d|y a)|ou se trouve|definition|explique|"
              r"comment fonctionne|pourquoi (le|la|les|l)|quelle est la (capitale|population|distance|hauteur))\b")
 
-OUI = r"^(oui|ouais|ok|d accord|vas y|va s y|bien sur|volontiers|je veux bien|oui merci|si)\b"
+METEO = r"\b(meteo|quel temps|va t il (pleuvoir|neiger|faire beau)|il va pleuvoir|previsions?)\b"
+OUI = r"^(oui|ouais|ok|d accord|vas y|va s y|bien sur|volontiers|je veux bien|oui merci|si|fais le|c est parti|(tele)?charge)\b"
 NON = r"^(non|pas la peine|laisse tomber|non merci|annule)\b"
 
 DECISION = (r"\b(devrais je|dois je|faut il|vaut il mieux|est il preferable|tu me conseilles|"
@@ -82,6 +87,7 @@ class Cerveau:
         self.derniere_fiche = None
         self.en_attente = None        # action proposée, exécutée si l'utilisateur répond « oui »
         self.derniere_origine = None  # pour répondre à « quelle est ta source ? »
+        self.ville_demandee = None        # phrase météo en attente de « pour quelle ville ? »
         self.question_tutoiement = None   # nom de la personne à qui l'on vient de demander « on se tutoie ? »
         self.oubli_a_confirmer = None     # (nom, mots ou None pour « tout ») en attente d'un « oui »
         self.demande_enrolement = None    # prénom dont la boucle vocale doit enregistrer la voix
@@ -280,6 +286,8 @@ class Cerveau:
                                               "vérifiez les points importants.",
                              "sources": [{"titre": f"Wikipédia, article « {article['titre']} »", "url": article["url"],
                                           "niveau": 1, "consulte": knowledge.aujourdhui()}]})
+        if self._libre("wikipedia"):
+            return None, depuis_wikipedia
         self.en_attente = depuis_wikipedia
         return "Je n'ai pas ce sujet dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
 
@@ -341,11 +349,22 @@ class Cerveau:
         a = self.actions
 
         # --- Réponse à une proposition (« Puis-je consulter… ? ») -------------
+        if self.ville_demandee is not None:  # réponse à « pour quelle ville ? »
+            demande, self.ville_demandee = self.ville_demandee, None
+            if re.search(NON, t):
+                return "D'accord, pas de météo.", None
+            if re.search(r"\b(devine|detecte|trouve|localise)|" + OUI, t):
+                return None, lambda: self._meteo_devinee(demande)
+            return None, lambda: self._meteo(re.sub(r"^(a|pour|sur) ", "", t), demande, retenir=True)
+
         attente, self.en_attente = self.en_attente, None
         if attente and re.search(OUI, t):
             return None, attente
         if attente and re.search(NON, t):
             return "D'accord, je n'y touche pas.", None
+        if attente and len(t.split()) <= 2:  # « charge », « les coins » : mal entendu, on redemande
+            self.en_attente = attente
+            return "Pardon, c'est oui ou non ?", None
 
         if re.search(r"\b(ta source|tes sources|d ou tu tiens|d ou ca vient|d ou viennent|"
                      r"ou as tu trouve|ou tu as trouve|qui te l a dit)\b", t):
@@ -442,15 +461,56 @@ class Cerveau:
             if r is not None:
                 return f"Ça fait {r}.", None
 
+        # --- Météo : dite d'après Open-Meteo ; La Chaîne Météo ouverte à l'écran sur demande ---
+        if re.search(r"\bchanger? (de |ma )ville\b", t):
+            self.ville_demandee = ""
+            return "Quelle ville ? Ou dis « devine » pour que je la trouve d'après ta connexion.", None
+        if re.search(METEO, t):
+            ville = meteo.ville_dans(t)
+            if ville or self.cfg.get("ville_meteo"):
+                return None, lambda: self._meteo(ville or self.cfg["ville_meteo"], t)
+            self.ville_demandee = t
+            return ("Pour quelle ville ? Je peux aussi la deviner d'après ta connexion internet, "
+                    "si tu me dis « devine ».", None)
+
+        # --- Publications officielles (fichiers EPUB, téléchargement autorisé), après accord sur la taille ---
+        if re.search(r"\b(telecharge|recupere|enregistre|procure)", t) and publications.demande(t):
+            pubs = [p for p in (publications.chercher(*d) for d in publications.demande(t)) if p]
+            if not pubs:
+                return "Je ne trouve pas cette publication : elle n'est peut-être pas encore parue.", None
+            cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
+            titres = " et ".join(f"« {p['titre']} »" for p in pubs)
+
+            def telecharger():
+                try:
+                    for pub in pubs:
+                        a.ouvrir_lien(publications.telecharger(pub, dossiers.chemin(self.cfg, cle)).as_uri())
+                except OSError as e:
+                    return f"Le téléchargement n'a pas abouti : {e}."
+                self.derniere_origine = "bible"
+                return f"Voilà {titres}, dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}."
+            self.en_attente = telecharger
+            taille = espace.mo(sum(p["octets"] for p in pubs))
+            return (f"{titres} {'font' if len(pubs) > 1 else 'fait'} {taille}"
+                    f"{' en tout' if len(pubs) > 1 else ''}. Je {'les' if len(pubs) > 1 else 'le'} télécharge ?"), None
+
         # --- Questions bibliques : base externe, source donnée seulement sur demande ---
         self.derniere_fiche = None
         if bible.est_biblique(t):
             lien = bible.lien(phrase)
+            code_verset = bible.reference(chiffres(t))
+            if code_verset:  # verset cité : d'abord la Bible téléchargée
+                return self._verset(code_verset, chiffres(t), lien)
+            r = bible.rubrique(t)
+            if r and r[0] == "jour":  # texte du jour : d'abord le livret téléchargé, sinon proposition
+                return self._texte_du_jour(r[1], lien)
 
             def ouvrir_bible():
                 a.ouvrir_lien(lien)
                 self.derniere_origine = "bible"
                 return "Voilà, je t'affiche la réponse à l'écran."
+            if self._libre("jw"):
+                return None, ouvrir_bible
             self.en_attente = ouvrir_bible
             return "Puis-je consulter ma base de connaissance externe ?", None
 
@@ -481,6 +541,8 @@ class Cerveau:
                     "C'est une encyclopédie collaborative : vérifie les points importants.")
         # Question factuelle → d'abord une source (Wikipédia, après accord)
         if re.search(FACTUELLE, t):
+            if self._libre("wikipedia"):
+                return None, consulter_wikipedia
             self.en_attente = consulter_wikipedia
             return "Je n'ai pas ça dans ma mémoire locale. Puis-je consulter ma base de connaissance externe ?", None
 
@@ -494,6 +556,109 @@ class Cerveau:
                               "Je ne sais pas encore répondre à ça. Pour discuter plus librement, on peut m'ajouter "
                               "un modèle de conversation dans le panneau, onglet Réglages."]), None
 
+    def _meteo(self, ville, demande="", retenir=False):
+        """Dit la météo de `ville` (ou l'affiche si on demande à la voir) ; la ville donnée en réponse à
+        « pour quelle ville ? » est retenue (changeable à la voix)."""
+        self.derniere_origine = "meteo"
+        if re.search(r"\b(montre|affiche|ouvre|voir)\b", demande):
+            self.actions.ouvrir_lien("https://www.google.com/search?q="
+                                     + urllib.parse.quote(f"La Chaîne Météo {ville}"))
+            texte = f"Voilà la météo pour {ville.title()}, à l'écran."
+        else:
+            try:
+                texte = meteo.bulletin(ville, demande)
+            except Exception:
+                return "Je n'arrive pas à joindre le service météo. Vérifie la connexion internet."
+            if not texte:
+                self.ville_demandee = demande
+                return f"Je ne trouve pas la ville {ville}. Tu peux la redire ?"
+        if retenir and ville != self.cfg.get("ville_meteo"):
+            from .config import sauver
+            self.cfg["ville_meteo"] = ville
+            sauver(self.cfg)
+            texte += " Je retiens cette ville ; pour en changer, dis « change ma ville »."
+        return texte
+
+    def _meteo_devinee(self, demande=""):
+        """Ville estimée d'après l'adresse internet (service ipapi.co), seulement sur demande explicite."""
+        try:
+            with urllib.request.urlopen(urllib.request.Request(
+                    "https://ipapi.co/json/", headers={"User-Agent": "Orion-assistant/1.0"}), timeout=10) as r:
+                ville = json.load(r).get("city")
+        except Exception:
+            ville = None
+        if not ville:
+            self.ville_demandee = demande
+            return "Je n'arrive pas à deviner ta ville. Dis-moi laquelle ?"
+        return f"D'après ta connexion, tu es vers {ville}. " + self._meteo(normaliser(ville), demande, retenir=True)
+
+    def _verset(self, code, t, lien):
+        """Lit le verset dans la Bible téléchargée ; sinon propose de la télécharger ; sinon l'ouvre."""
+        livre, chapitre, debut = bible.LIVRES[int(code[:2]) - 1], int(code[2:5]), int(code[5:])
+        m = re.search(rf"\b{debut}\s*(?:a|au|jusqu a)\s*(?:verset\s*)?(\d+)\b", t)
+        fin = int(m.group(1)) if m and int(m.group(1)) > debut else None
+        nom = f"{livre.title()} {chapitre}, {'versets' if fin else 'verset'} {debut}{f' à {fin}' if fin else ''}"
+        self.derniere_origine = "bible"
+        epub = publications.fichier_local("nwt", self._dossiers_publications())
+        texte = publications.verset(epub, livre, chapitre, debut, fin) if epub else None
+        if texte:
+            return f"{nom} : {texte}", None
+
+        def ouvrir():
+            self.actions.ouvrir_lien(lien)
+            return "Je n'ai pas trouvé ce verset dans la Bible téléchargée : je te l'affiche à l'écran."
+        pub = None if epub else publications.chercher("nwt")
+        if not pub:
+            return None, ouvrir
+
+        def telecharger_puis_lire():
+            try:
+                publications.telecharger(pub, dossiers.chemin(self.cfg))
+            except OSError:
+                return ouvrir()
+            return self._verset(code, t, lien)[0] or ouvrir()
+        self.en_attente = telecharger_puis_lire
+        return (f"Je n'ai pas encore la Bible dans tes documents. Je la télécharge "
+                f"({espace.mo(pub['octets'])}) pour te lire ce verset ?"), None
+
+    def _dossiers_publications(self):
+        return [Path(os.path.expanduser(c)) for c in dossiers.liste(self.cfg).values()]
+
+    def _texte_du_jour(self, date, lien):
+        """Lit le texte du jour dans « Examinons les Écritures » téléchargé ; s'il manque, propose de le
+        télécharger ; la page web n'est ouverte qu'en dernier recours."""
+        code = f"es{date.year % 100:02d}"
+        epub = publications.fichier_local(code, self._dossiers_publications())
+        self.derniere_origine = "bible"
+        if epub:
+            r = publications.texte_du_jour(epub, date)
+            if r:
+                titre, verset, commentaire = r
+                commentaire = re.sub(r"\s*\b[a-z]{1,3}\d{2}\.\d{2}\b.*$", "", commentaire)  # référence finale
+                texte = f"Texte du {titre[0].lower() + titre[1:]}. {verset} {commentaire}"
+                return re.sub(r"\s*\[…\]\s*", " ", texte).replace("[", "").replace("]", ""), None
+        pub = publications.chercher(code)
+
+        def ouvrir():
+            self.actions.ouvrir_lien(lien)
+            return "Je n'ai pas le texte dans mes publications : je te l'affiche à l'écran."
+        if not pub:
+            return None, ouvrir
+
+        def telecharger_puis_lire():
+            try:
+                publications.telecharger(pub, dossiers.chemin(self.cfg))
+            except OSError:
+                return ouvrir()
+            return self._texte_du_jour(date, lien)[0] or ouvrir()
+        self.en_attente = telecharger_puis_lire
+        return (f"Je n'ai pas encore « {pub['titre']} » dans tes documents. Je le télécharge "
+                f"({espace.mo(pub['octets'])}) pour te le lire ?"), None
+
+    def _libre(self, site):
+        """Sites consultés sans demander l'accord (réglage « sites_libres ») ; rien n'en est stocké."""
+        return site in self.cfg.get("sites_libres", [])
+
     SOURCE_BIBLIQUE = ("Pour les questions bibliques, ma base de connaissance externe est le site officiel "
                        "des Témoins de Jéhovah, JW.org, sa Bibliothèque en ligne wol.jw.org, "
                        "et l'application JW Library.")
@@ -504,6 +669,8 @@ class Cerveau:
             return self.SOURCE_BIBLIQUE
         if o == "conversation_locale":
             return "Je te réponds avec mon modèle de conversation local, sans source : ce n'est qu'un avis."
+        if o == "meteo":
+            return "La météo vient d'Open-Meteo, un service de données météo ouvertes."
         if o == "wikipedia":
             return f"Cette réponse vient de Wikipédia, article {self.derniere_fiche['titre']}."
         if o == "locale" and self.derniere_fiche:
@@ -512,8 +679,8 @@ class Cerveau:
                 return "Elle vient de ma base locale, appuyée sur : " + " ; ".join(
                     s["titre"].split("(")[0].strip() for s in sources[:3]) + "."
             return "Elle vient de ma base locale, sans référence vérifiée pour cette fiche."
-        return ("Je réponds d'abord avec ma base locale. Avec ton accord, je consulte Wikipédia, "
-                "et pour les questions bibliques JW.org, wol.jw.org et JW Library.")
+        return ("Je réponds d'abord avec ma base locale. Sinon je consulte Wikipédia, Open-Meteo, "
+                "et pour les questions bibliques JW.org, wol.jw.org et JW Library, sans rien en garder.")
 
     @staticmethod
     def en_francais(phrase, langue, traducteur):
