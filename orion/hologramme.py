@@ -307,25 +307,57 @@ class Hologramme:
         self.statut_texte, self.statut_fraction = texte, fraction
 
     def _ecran_chargement(self):
-        """Logo d'Orion par-dessus l'hologramme pendant le démarrage (modèles à charger) ; fin_chargement()
-        le retire, et il s'efface de lui-même au bout de 30 s au plus."""
+        """Logo d'Orion par-dessus l'hologramme pendant le démarrage, avec des fondus : il apparaît en
+        fondu, puis s'efface en fondu enchaîné sur l'hologramme quand Orion est prêt (30 s au plus).
+        Tk ne sait pas rendre une image semi-transparente : le logo est donc dans une petite fenêtre posée
+        exactement sur l'hologramme, dont on fait varier l'opacité."""
         from .config import DATA
-        fichier = DATA / "logos" / "ecran-chargement.png"
         self._ecran = None
         try:
-            image = tk.PhotoImage(file=str(fichier))
+            image = tk.PhotoImage(file=str(DATA / "logos" / "ecran-chargement.png"))
             reduction = max(1, -(-int(image.width()) // int(self.taille)))  # entier : le logo tient dans la fenêtre
+            ecran = tk.Toplevel(self.root)
+            ecran.overrideredirect(True)
+            ecran.attributes("-topmost", True)
+            ecran.attributes("-alpha", 0.0)
         except (tk.TclError, AttributeError, TypeError, ValueError):
             return
         self._image_ecran = image.subsample(reduction) if reduction > 1 else image
-        self._ecran = self.toile.create_image(self.taille / 2, (self.taille + 70) / 2, image=self._image_ecran)
+        tk.Label(ecran, image=self._image_ecran, bg=FOND, bd=0).pack(fill="both", expand=True)
+        self._ecran = ecran
+
+        def poser():  # exactement sur la zone de l'hologramme, une fois la fenêtre placée
+            if self._ecran is ecran:
+                self.root.update_idletasks()
+                ecran.geometry(f"{self.toile.winfo_width()}x{self.toile.winfo_height()}"
+                               f"+{self.toile.winfo_rootx()}+{self.toile.winfo_rooty()}")
+                ecran.attributes("-topmost", True)
+                ecran.lift(self.root)  # au-dessus de l'hologramme, lui-même « toujours devant »
+                self._fondu(ecran, 0.0, 1.0, 0.5)
+        self.root.after(120, poser)
         self.root.after(30000, self.fin_chargement)
 
+    def _fondu(self, fenetre, depart, arrivee, duree, puis=None):
+        """Opacité de `fenetre` de `depart` à `arrivee` en `duree` secondes (25 images/s)."""
+        etapes = max(1, int(duree * 25))
+
+        def pas(i=0):
+            if not fenetre.winfo_exists():
+                return
+            k = i / etapes
+            fenetre.attributes("-alpha", depart + (arrivee - depart) * (k * k * (3 - 2 * k)))  # doux aux bords
+            if i < etapes:
+                fenetre.after(40, pas, i + 1)
+            elif puis:
+                puis()
+        pas()
+
     def fin_chargement(self):
-        """Retire l'écran de chargement (appelable depuis n'importe quel thread)."""
-        if getattr(self, "_ecran", None):
-            ecran, self._ecran = self._ecran, None
-            self.root.after(0, lambda: self.toile.delete(ecran))
+        """Retire l'écran de chargement en fondu enchaîné (appelable depuis n'importe quel thread)."""
+        ecran, self._ecran = getattr(self, "_ecran", None), None
+        if ecran:
+            self.root.after(0, lambda: ecran.winfo_exists() and self._fondu(ecran, float(ecran.attributes("-alpha")),
+                                                                             0.0, 0.9, ecran.destroy))
 
     def redaction(self, format_):
         """Format en cours de rédaction (« PDF », « DOCX »…) ou None. Appelable depuis n'importe quel thread."""
