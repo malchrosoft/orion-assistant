@@ -16,8 +16,11 @@ FORMATS = {"docx": r"\b(word|docx|doc)\b", "md": r"\b(markdown|md)\b", "html": r
 
 
 def format_demande(t):
-    """Format cité dans la phrase normalisée (PDF par défaut)."""
-    return next((f for f, motif in FORMATS.items() if re.search(motif, t)), "pdf")
+    """Format cité dans la phrase normalisée (PDF par défaut ; « rapport », « qualité pro » : PDF composé en LaTeX)."""
+    format_ = next((f for f, motif in FORMATS.items() if re.search(motif, t)), "pdf")
+    if format_ == "pdf" and re.search(r"\b(pro|professionnel(le)?|rapport|latex|qualite)\b", t):
+        return "pdf_pro"
+    return format_
 
 
 def _nom(titre, extension):
@@ -107,6 +110,11 @@ def generer(doc, format_, dossier):
     """`doc` : {titre, contenu, question?, sources?:[{titre, url}]}. Renvoie le chemin du fichier créé."""
     dossier = Path(dossier)
     dossier.mkdir(parents=True, exist_ok=True)
+    if format_ == "pdf_pro":  # qualité professionnelle : LaTeX si Tectonic est là, sinon le PDF intégré
+        from . import latex
+        if latex.tectonic():
+            return latex.rapport(doc, dossier)
+        format_ = "pdf"
     if format_ == "pdf":
         from . import document
         return document.generer({"domaine": doc.get("domaine", "Réponse d'Orion"), **doc}, bool(_sources(doc)), dossier)
