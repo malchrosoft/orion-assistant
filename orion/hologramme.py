@@ -486,6 +486,18 @@ class Hologramme:
         self.ouvrir_panneau()
 
     def _animer(self):
+        """Une image ; une erreur de dessin ne doit jamais figer l'hologramme : on la note et on continue."""
+        try:
+            self._dessiner()
+        except Exception as erreur:
+            if not getattr(self, "_erreur_notee", False):
+                self._erreur_notee = True
+                import traceback
+                traceback.print_exception(erreur)
+            self.t += 0.04
+        self.root.after(40, self._animer)
+
+    def _dessiner(self):
         c, s, t, etat = self.toile, self.taille, self.t, self.etat
         echelle = s * 0.38
         if self.carte:  # visage de face : centré exactement sur son emprise réelle (tête et cou)
@@ -662,7 +674,6 @@ class Hologramme:
             c.itemconfigure(self.barre, state="normal", fill=melange(self.coeur, "#ffffff", 0.2))
 
         self.t += 0.04
-        self.root.after(40, self._animer)
 
     def lancer(self):
         self.root.mainloop()
