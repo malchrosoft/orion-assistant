@@ -11,6 +11,8 @@ import multiprocessing
 import re
 import threading
 
+from .texte import pour_la_voix
+
 LANGUES = {"fr": "français", "en": "anglais", "es": "espagnol", "de": "allemand", "it": "italien",
            "pt": "portugais", "nl": "néerlandais", "ar": "arabe", "pl": "polonais", "tr": "turc",
            "zh": "chinois", "ja": "japonais", "ru": "russe"}
@@ -187,7 +189,7 @@ class Bouche:
 
     def dire(self, texte):
         """Bloque jusqu'à la fin de la phrase ou jusqu'à interrompre(). Renvoie False si interrompu."""
-        texte = self.prononcer(texte)
+        texte = pour_la_voix(self.prononcer(texte), self.cfg.get("langue", "fr"))  # « .pdf » → « point P D F »
         with self.verrou:
             proc, entree, sortie = self.proc, self.entree, self.sortie
         entree.put({"texte": texte, "voix": self.voix, "vitesse": self.cfg["voix_vitesse"], "piper": self.piper})

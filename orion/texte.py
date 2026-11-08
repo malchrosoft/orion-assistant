@@ -127,3 +127,46 @@ def chiffres(t: str) -> str:
     if courant is not None:
         sortie.append(str(courant))
     return " ".join(sortie)
+
+
+# --- Lecture à voix haute des noms de fichiers et des formats (toutes langues) ----------------------------------
+# « rapport.pdf » → « rapport point P D F », « .docx » → « doc X » : on ne développe jamais le sigle, on le
+# prononce comme un mot quand il se prononce (syllabes), sinon lettre par lettre.
+POINT = {"fr": "point", "en": "dot", "es": "punto", "de": "Punkt", "it": "punto", "pt": "ponto", "nl": "punt",
+         "pl": "kropka", "tr": "nokta", "ru": "точка", "ar": "نقطة", "zh": "点", "ja": "ドット"}
+FORMATS_CONNUS = ("pdf", "html", "htm", "docx", "doc", "xlsx", "pptx", "odt", "epub", "md", "csv", "txt", "json",
+                  "xml", "zip", "mp3", "mp4", "wav", "jpeg", "jpg", "png", "gif", "svg", "ics", "tex", "py", "exe",
+                  "dmg", "deb", "log")
+_SYLLABE = re.compile(r"[^aeiouy\d]?[aeiouy]+[^aeiouy\d]?", re.I)
+
+
+def epeler_format(ext):
+    """Format de fichier tel qu'on le dit : syllabes prononçables d'abord, le reste lettre par lettre."""
+    prononce, i = "", 0
+    while i < len(ext) and (m := _SYLLABE.match(ext, i)):
+        if len(m.group(0)) < 2 and not prononce:  # une voyelle isolée en tête (« e » de « epub ») reste avec la suite
+            suite = _SYLLABE.match(ext, m.end())
+            if not suite:
+                break
+            prononce += m.group(0) + suite.group(0)
+            i = suite.end()
+            continue
+        prononce, i = prononce + m.group(0), m.end()
+    if len(prononce) < 2:  # rien de prononçable : « pdf » → « P D F »
+        prononce, i = "", 0
+    lettres = " ".join(ext[i:].upper())
+    return (prononce.lower() + (" " + lettres if lettres else "")).strip() if prononce else lettres
+
+
+def pour_la_voix(texte, langue="fr"):
+    """Texte prêt à être dit : noms de fichiers et sigles de formats lus comme on les prononce."""
+    point = POINT.get(langue, POINT["en"])
+    formats = "|".join(FORMATS_CONNUS)
+
+    def fichier(m):
+        return f"{m.group(1)} {point} {epeler_format(m.group(2))}"
+    texte = re.sub(rf"(\w[\w\-]*)\.({formats})\b", fichier, texte, flags=re.I)        # « rapport.pdf »
+    texte = re.sub(rf"(?<![\w.])\.({formats})\b", lambda m: f"{point} {epeler_format(m.group(1))}", texte,
+                   flags=re.I)                                                         # « .docx » seul
+    return re.sub(rf"\b({formats})\b", lambda m: epeler_format(m.group(1).lower()) if m.group(1).isupper()
+                  else m.group(1), texte, flags=re.I)                                  # « le PDF », « en HTML »
