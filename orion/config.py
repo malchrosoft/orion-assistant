@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Configuration : valeurs par défaut surchargées par config.json à la racine."""
 import json
 import sys

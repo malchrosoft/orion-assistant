@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Questions bibliques : base de connaissance externe = JW.org, wol.jw.org (Bibliothèque en ligne
 Watchtower) et l'application JW Library.
 

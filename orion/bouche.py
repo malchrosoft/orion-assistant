@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Synthèse vocale hors ligne via les voix du système (SAPI Windows, NSSpeech macOS, eSpeak Linux).
 
 La voix tourne dans un petit processus séparé : pour faire taire Orion, on le coupe net et on en relance

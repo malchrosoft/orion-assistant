@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Apprendre depuis un lien internet, avec méfiance.
 
 Tout ce qui vient du web est stocké au niveau 0 (« non vérifié ») et Orion le signale à chaque

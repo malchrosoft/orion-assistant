@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Interface graphique optionnelle (Tkinter, incluse avec Python) : discuter, gérer le savoir,
 les voix de la famille et les réglages, sans toucher aux fichiers JSON."""
 import json

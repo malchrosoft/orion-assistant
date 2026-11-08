@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Installation guidée d'Orion — bibliothèque standard uniquement.
 
   python install.py          pose 3 questions (Entrée = valeur proposée)

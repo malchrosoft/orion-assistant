@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Téléchargement des modèles Vosk (bibliothèque standard uniquement : utilisable avant l'installation)."""
 import sys
 import urllib.request

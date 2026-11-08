@@ -1,4 +1,6 @@
 @echo off
+rem SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+rem SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 rem Double-clic : installe Orion au premier lancement, puis le démarre sans fenêtre de console.
 cd /d "%~dp0"
 if not exist ".venv\Scripts\pythonw.exe" (

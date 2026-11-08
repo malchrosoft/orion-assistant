@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Compréhension des demandes : règles simples + calcul + base de savoir (+ LLM local optionnel)."""
 import ast
 import datetime

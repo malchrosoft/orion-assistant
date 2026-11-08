@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Version packagée (facultative) : un dossier « Orion » avec Orion.exe, sans Python à installer.
 
   pip install pyinstaller && python build_exe.py

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz
+# SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0
 """Mini-base de savoir locale : SQLite + recherche plein texte (FTS5), zéro dépendance.
 
 Chaque fiche peut citer des références, classées selon la grille « shoulders of giants » :
