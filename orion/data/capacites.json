@@ -5,6 +5,11 @@
   "contenu": "Dis « dis-moi Orion », ou clique sur mon hologramme. Un petit bip t'indique que je t'écoute. Pendant que je parle, un clic sur l'hologramme me fait taire."
  },
  {
+  "titre": "Mode silencieux",
+  "motscles": "silencieux silence ecrit ecrire parler voix muet discret vocal",
+  "contenu": "Dis « mode silencieux » : je te réponds par écrit sur mon hologramme, sans parler ni biper à l'écoute. « Mode vocal » pour que je reparle. C'est aussi dans le menu du clic droit et dans le panneau."
+ },
+ {
   "titre": "Reconnaître les voix de la famille",
   "motscles": "voix reconnaitre reconnaissance famille enregistrer memoriser empreinte qui suis je retirer couleur confondre confusion trompe comparer hauteur",
   "contenu": "Je reconnais chaque membre de la famille à sa voix. Dis « mémorise ma voix, je suis… » et lis-moi cinq phrases, ou passe par le panneau, onglet Famille. Chacun peut choisir sa couleur : « ma couleur est le vert ». Si je confonds deux voix, je demande qui parle ; si je me trompe, dis « tu te trompes, c'est … » et j'apprends."

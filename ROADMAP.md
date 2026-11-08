@@ -101,6 +101,9 @@ sans raison, source citée.
 
 ## Fait récemment
 
+- Mode silencieux : réponses écrites sur l'hologramme, sans voix ni bip d'écoute (voix, menu, panneau).
+- Émission vidéo du mois téléchargée à la demande (MP4 de la vidéothèque publique, taille annoncée,
+  360p ou 720p), rangée dans Documents/Orion/Vidéos.
 - Logo d'Orion : version plate (SVG, PNG, ICO) tirée de l'image d'origine, fond transparent, dessins
   éclaircis en cyan ; vue artistique pour le README et l'écran de chargement ; icône des fenêtres et de
   l'installateur Windows, logo dans les PDF.

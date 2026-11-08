@@ -30,6 +30,7 @@ Au tout premier démarrage, Orion annonce la langue de sa voix et **demande conf
 
 - **L'appeler** : « **dis-moi Orion** » (ou « dis Orion », « hey Orion »), ou un **clic sur l'hologramme**. Un **bip doux** signale qu'il écoute, et l'hologramme passe au cyan. Après une question de sa part, il reste à l'écoute quelques secondes.
 - **L'interrompre** : un clic sur l'hologramme pendant qu'il parle (ou « Se taire » au clic droit). Son micro est coupé quand il parle, pour qu'il ne s'entende jamais lui-même dans les haut-parleurs.
+- **Mode silencieux** : « mode silencieux » (ou clic droit, ou le panneau) et Orion répond par écrit sur l'hologramme, sans parler ; « mode vocal » pour revenir à la voix.
 - **Lui demander ce qu'il sait faire** : « qu'est-ce que tu sais faire ? » donne un résumé d'une phrase ; « comment je lance un compte à rebours ? » donne l'explication du sujet, en deux ou trois phrases.
 - Exemples :
   - « mets de la musique », « morceau suivant », « monte le son », « ouvre la calculatrice »
