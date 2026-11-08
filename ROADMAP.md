@@ -30,6 +30,37 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
 - **Les gérer** : liste dans le panneau, activer/désactiver, retirer ; question à la voix « quelles
   compétences as-tu ? ».
 
+### Documents de qualité professionnelle
+- **Installer Tectonic à la demande** (moteur LaTeX, licence MIT, programme séparé), avec annonce de la
+  place nécessaire : aujourd'hui, le rapport LaTeX n'est utilisé que si Tectonic est déjà installé.
+- **Rapport LaTeX pour les fiches** et la recherche « sur les épaules de géants » (lignée en tableau).
+- **Choix du thème** clair ou sombre dans le panneau.
+
+### Interfaces ouvertes à brancher (gratuites, sans clé, vérifiées en novembre 2026)
+Chaque appel garde les règles d'Orion : accord avant internet (sauf sites autorisés), rien de stocké
+sans raison, source citée.
+- **Jours fériés** : `calendrier.api.gouv.fr` (France, Etalab) ou `date.nager.at` (tous pays) — « le 11 novembre
+  est-il férié ? », « prochain pont ».
+- **Communes et géographie** : `geo.api.gouv.fr` — code postal, département, population.
+- **Lever et coucher du soleil** : `api.sunrise-sunset.org` (avec la ville déjà connue pour la météo).
+- **Livres** : Open Library (`openlibrary.org`) — auteur, résumé, « trouve un livre sur… ».
+- **Produits alimentaires** : Open Food Facts — composition, allergènes, Nutri-Score d'après un nom ou un
+  code-barres (licence ODbL).
+- **Radios** : Radio Browser (`api.radio-browser.info`) — « mets France Inter », lecture du flux.
+- **Taux de change** : Frankfurter (taux de la Banque centrale européenne).
+- **Pays** : REST Countries — capitale, monnaie, langues.
+- **Quiz en famille** : Open Trivia DB (questions surtout en anglais : à traduire, ou à remplacer par une
+  réserve locale en français).
+- **Blagues en ligne** : JokeAPI (déjà branchée mais désactivée par défaut, voir plus bas).
+
+### Chansons
+- **Pas de chansons connues chantées** : leurs paroles sont protégées, et les services de paroles
+  (lyrics.ovh…) les diffusent sans en avoir clairement les droits ; les voix d'Orion ne savent pas chanter
+  (synthèse parlée).
+- **Possible** : faire écouter un titre dans Spotify ou AIMP (déjà fait), ou réciter / fredonner des
+  **comptines du domaine public** (« Au clair de la lune », « Frère Jacques ») avec une petite mélodie
+  synthétisée sous la voix.
+
 ### Langues
 - **Tenir compte de la langue de discussion** partout où Orion va chercher quelque chose :
   - **Météo** : noms de villes et bulletin dans la langue de discussion (le service de géocodage accepte
@@ -49,12 +80,25 @@ Ce qui est prévu, sans date ni promesse. Les idées passent de « À faire » �
 - **Réglage fin du seuil de voix** d'après les ressemblances relevées en usage réel ; mieux distinguer
   les voix proches d'une même famille.
 - **Interruption à la voix** pendant qu'Orion parle, sans qu'il s'entende (annulation d'écho acoustique).
+- **Piloter la musique pendant une lecture** (texte du jour, programme, document lu) :
+  - à la voix, une fois l'annulation d'écho en place : « pause », « suivant », « moins fort » sans couper
+    la lecture ;
+  - dès maintenant possible à la souris : menu du clic droit sur l'hologramme (lecture/pause, suivant,
+    volume) et touches multimédia du clavier, qui ne passent pas par le micro ;
+  - baisser automatiquement le volume de la musique pendant qu'Orion parle, puis le rétablir.
 
 ### Distribution
 - **Installateurs** : relancer et vérifier la construction des paquets (exe, dmg, deb) avant une version publiée.
 
 ## Fait récemment
 
+- Rapport PDF de qualité professionnelle composé en LaTeX (« fais-en un rapport PDF de qualité pro »),
+  si Tectonic est installé ; sinon le PDF intégré.
+- Documents annoncés avec leur nom et leur emplacement, ouverture proposée ; Orion se vante parfois de sa
+  rapidité (temps réel de rédaction).
+- Blagues pour toute la famille, depuis une réserve locale relue (sans répétition avant d'avoir tout dit) ;
+  JokeAPI en option (« blagues_internet »), filtrée, car son « mode sûr » laisse passer des blagues
+  inadaptées en français.
 - Document tiré de la dernière réponse, à la demande : Word (.docx), Markdown, page web (.html) ou PDF,
   avec la question, la réponse et ses sources ; sans dépendance supplémentaire.
 - « Sur les épaules de géants » : comment d'autres ont déjà résolu un problème, d'après des sources
