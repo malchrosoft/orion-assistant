@@ -180,6 +180,13 @@ class Hologramme:
         self.sonnerie, self.acquitte = False, False
         self.arcs_decompte = [c.create_arc(0, 0, 0, 0, start=90, extent=0, style="arc", outline=FOND, width=w,
                                            state="hidden") for w in (16, 7, 2)]
+        # Rédaction d'un document : feuille lumineuse dont les lignes s'écrivent, étiquette du format
+        self.redaction_format, self._t_redaction = None, 0.0
+        self.feuille = c.create_polygon(0, 0, 0, 0, 0, 0, fill="", outline=FOND, width=2, state="hidden")
+        self.coin = c.create_line(0, 0, 0, 0, fill=FOND, width=2, state="hidden")
+        self.lignes_feuille = [c.create_line(0, 0, 0, 0, fill=FOND, width=2, state="hidden") for _ in range(7)]
+        self.plume = c.create_oval(0, 0, 0, 0, fill=FOND, outline="", state="hidden")
+        self.etiquette_feuille = c.create_text(0, 0, text="", fill=FOND, font=("Helvetica", 10, "bold"), state="hidden")
         self.anneaux = [c.create_polygon(0, 0, 0, 0, 0, 0, fill="", outline=FOND, width=w, smooth=True)
                         for w in (9, 4, 1)]
         self.source_niveau = lambda: 0.0  # volume du micro (0 à 1), branché par la boucle vocale
@@ -282,6 +289,10 @@ class Hologramme:
         est connue. progression("") efface tout."""
         self.statut_texte, self.statut_fraction = texte, fraction
 
+    def redaction(self, format_):
+        """Format en cours de rédaction (« PDF », « DOCX »…) ou None. Appelable depuis n'importe quel thread."""
+        self.redaction_format, self._t_redaction = format_, self.t
+
     def interlocuteur(self, nom, couleur=None):
         """Personne reconnue (vide : personne) et sa couleur (#rrggbb) : elle teinte le halo et son nom.
         Appelable depuis n'importe quel thread."""
@@ -303,6 +314,48 @@ class Hologramme:
             self.lecture, self._t_lecture, self._lignes = legende, time.monotonic(), []
         elif etat != "parole":
             self.lecture = ""
+
+    def _afficher_feuille(self):
+        """Feuille qui flotte à droite du visage : ses lignes s'écrivent l'une après l'autre, une plume brille
+        au bout de la ligne en cours, puis tout recommence tant que la rédaction dure."""
+        c, s = self.toile, self.taille
+        items = [self.feuille, self.coin, self.plume, self.etiquette_feuille] + self.lignes_feuille
+        if not self.redaction_format:
+            for item in items:
+                c.itemconfigure(item, state="hidden")
+            return
+        age = self.t - self._t_redaction
+        apparition = min(1.0, age / 0.4)
+        l, h = s * 0.2, s * 0.26
+        x0, y0 = s * 0.76 - l / 2, s * 0.36 - h / 2 + 4 * math.sin(self.t * 2)  # flotte doucement
+        pli = l * 0.22
+        teinte = melange(FOND, melange(self.coeur, "#ffffff", 0.35), 0.9 * apparition)
+        c.coords(self.feuille, x0, y0, x0 + l - pli, y0, x0 + l, y0 + pli, x0 + l, y0 + h, x0, y0 + h)
+        c.itemconfigure(self.feuille, outline=teinte, fill=melange(FOND, self.coeur, 0.12 * apparition), state="normal")
+        c.coords(self.coin, x0 + l - pli, y0, x0 + l - pli, y0 + pli, x0 + l, y0 + pli)
+        c.itemconfigure(self.coin, fill=teinte, state="normal")
+        progres = (age * 2.2) % (len(self.lignes_feuille) + 1.5)  # lignes écrites, en boucle
+        plume = None
+        for i, item in enumerate(self.lignes_feuille):
+            y = y0 + h * (0.24 + 0.1 * i)
+            longueur = (l - 18) * (0.55 if i == len(self.lignes_feuille) - 1 else 0.9 - 0.1 * (i % 3 == 1))
+            fait = max(0.0, min(1.0, progres - i))
+            if fait <= 0:
+                c.itemconfigure(item, state="hidden")
+                continue
+            xf = x0 + 9 + longueur * fait
+            c.coords(item, x0 + 9, y, xf, y)
+            c.itemconfigure(item, fill=melange(FOND, self.coeur, 0.75 * apparition), state="normal")
+            if fait < 1:
+                plume = (xf, y)
+        if plume:
+            r = 3 + 1.5 * math.sin(self.t * 12)
+            c.coords(self.plume, plume[0] - r, plume[1] - r, plume[0] + r, plume[1] + r)
+            c.itemconfigure(self.plume, fill=melange(self.coeur, "#ffffff", 0.7), state="normal")
+        else:
+            c.itemconfigure(self.plume, state="hidden")
+        c.coords(self.etiquette_feuille, x0 + l / 2, y0 + h + 12)
+        c.itemconfigure(self.etiquette_feuille, text=self.redaction_format, fill=teinte, state="normal")
 
     def _afficher_decompte(self, cx, cy, echelle):
         """Arc qui se vide autour du visage, chiffres géants lumineux ; dernières secondes en rouge
@@ -573,6 +626,7 @@ class Hologramme:
                     c.coords(self.trainees[i], 0, 0, 0, 0)
 
         self._afficher_decompte(cx, cy, echelle)
+        self._afficher_feuille()
 
         # Balayage horizontal façon projection holographique
         y = (t * 60) % s
