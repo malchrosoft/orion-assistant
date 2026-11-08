@@ -193,6 +193,12 @@ class Profils:
             self.hauteurs[nom] = (self.hauteurs.get(nom, []) + [hz if isinstance(hz, dict) else round(hz, 1)])[-self.MAX:]
         self._sauver()
 
+    def retirer(self, nom):
+        """Oublie la voix de la personne : empreintes et traits."""
+        self.data.pop(nom, None)
+        self.hauteurs.pop(nom, None)
+        self._sauver()
+
     def _sauver(self):
         PROFILS.write_text(json.dumps(self.data))
         HAUTEURS.write_text(json.dumps(self.hauteurs))

@@ -20,7 +20,7 @@ from .persona import GENRES, salutation
 from .actions import Actions
 from .brain import Cerveau
 from .config import charger, sauver
-from .voix import PROFILS
+from .voix import Profils
 
 # Thème futuriste épuré : noir bleuté, accents cyan, aucune image (léger)
 FOND, SURFACE, TEXTE, ACCENT, DISCRET = "#05090d", "#0c141b", "#cfe9f2", "#29e0ff", "#5b7683"
@@ -369,7 +369,7 @@ class Panneau:
             try:
                 lignes = piper.estimer(cle)
             except Exception as e:
-                return self.root.after(0, lambda: self.etat_piper.set(f"Impossible d'estimer (internet ?) : {e}"))
+                return self.root.after(0, lambda e=e: self.etat_piper.set(f"Impossible d'estimer (internet ?) : {e}"))
             total = sum(o for _, o in lignes)
             detail = "\n".join(f"• {l} : {o / 1e6:.0f} Mo" for l, o in lignes)
 
@@ -384,7 +384,7 @@ class Panneau:
                     try:
                         piper.installer(cle, lambda m: self.root.after(0, lambda: self.etat_piper.set(m)))
                     except Exception as e:
-                        self.root.after(0, lambda: self.etat_piper.set(f"Échec : {e}"))
+                        self.root.after(0, lambda e=e: self.etat_piper.set(f"Échec : {e}"))
                 threading.Thread(target=installer, daemon=True).start()
             self.root.after(0, confirmer)
         threading.Thread(target=estimer, daemon=True).start()
@@ -518,7 +518,7 @@ class Panneau:
             try:
                 lignes, libre = langues.estimer(code)
             except Exception as e:
-                self.root.after(0, lambda: self.etat_langue.set(f"Impossible d'estimer (internet ?) : {e}"))
+                self.root.after(0, lambda e=e: self.etat_langue.set(f"Impossible d'estimer (internet ?) : {e}"))
                 return
             self.root.after(0, lambda: self._confirmer_installation(code, lignes, libre))
         threading.Thread(target=estimer, daemon=True).start()
@@ -541,7 +541,7 @@ class Panneau:
             try:
                 langues.installer(code, lambda m: self.root.after(0, lambda: self.etat_langue.set(m)))
             except Exception as e:
-                self.root.after(0, lambda: self.etat_langue.set(f"Échec de l'installation : {e}"))
+                self.root.after(0, lambda e=e: self.etat_langue.set(f"Échec de l'installation : {e}"))
             self.root.after(0, self._rafraichir_langues)
         threading.Thread(target=installer, daemon=True).start()
 
@@ -593,7 +593,7 @@ class Panneau:
                   justify="left").pack(anchor="w")
 
     def _profils(self):
-        return json.loads(PROFILS.read_text()) if PROFILS.exists() else {}
+        return Profils(self.cfg["seuil_locuteur"]).data
 
     def _rafraichir_voix(self):
         self.liste_voix.delete(0, "end")
@@ -850,10 +850,9 @@ class Panneau:
         threading.Thread(target=enregistrer, daemon=True).start()
 
     def _supprimer_voix(self):
-        profils = self._profils()
+        profils = Profils(self.cfg["seuil_locuteur"])
         for i in self.liste_voix.curselection():
-            profils.pop(self.liste_voix.get(i)[2:], None)
-        PROFILS.write_text(json.dumps(profils))
+            profils.retirer(self.liste_voix.get(i)[2:])
         self._rafraichir_voix()
 
     # --- Réglages ---------------------------------------------------------------
@@ -1060,7 +1059,7 @@ class Panneau:
             try:
                 lignes = [l for genre, cle in composants for l in modules[genre].estimer(cle)]
             except Exception as e:
-                return self.root.after(0, lambda: self.etat_installation.set(f"Impossible d'estimer (internet ?) : {e}"))
+                return self.root.after(0, lambda e=e: self.etat_installation.set(f"Impossible d'estimer (internet ?) : {e}"))
             self.root.after(0, lambda: confirmer(lignes))
 
         def confirmer(lignes):
@@ -1093,7 +1092,7 @@ class Panneau:
                     self.root.after(0, lambda: self.etat_installation.set(
                         "Installation terminée : Orion l'utilise tout seul dans quelques secondes."))
                 except Exception as e:
-                    self.root.after(0, lambda: self.etat_installation.set(f"Échec de l'installation : {e}"))
+                    self.root.after(0, lambda e=e: self.etat_installation.set(f"Échec de l'installation : {e}"))
             threading.Thread(target=installer, daemon=True).start()
         threading.Thread(target=estimer, daemon=True).start()
 

@@ -128,11 +128,8 @@ class Cerveau:
         if self.retrait_voix:
             nom, self.retrait_voix = self.retrait_voix, None
             if re.search(OUI, t):
-                from .voix import PROFILS
-                import json
-                profils = json.loads(PROFILS.read_text()) if PROFILS.exists() else {}
-                profils.pop(nom, None)
-                PROFILS.write_text(json.dumps(profils))
+                from .voix import Profils
+                Profils(self.cfg["seuil_locuteur"]).retirer(nom)
                 return f"C'est fait, {nom} : je ne reconnaîtrai plus ta voix.", None
             if re.search(NON, t):
                 return "D'accord, je garde ta voix.", None
