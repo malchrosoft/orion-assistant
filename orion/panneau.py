@@ -13,7 +13,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
-from . import knowledge, web
+from . import knowledge, langues, web
 from .bouche import LANGUES, Bouche, lister_voix
 from .persona import GENRES, salutation
 from .actions import Actions
@@ -66,12 +66,16 @@ class Panneau:
         onglets = ttk.Notebook(self.root)
         onglets.pack(fill="both", expand=True)
         for titre, construire in (("Discussion", self._discussion), ("Savoir", self._savoir),
-                                  ("Voix", self._voix), ("Famille", self._famille), ("Réglages", self._reglages)):
+                                  ("Voix", self._voix), ("Langues", self._langues), ("Famille", self._famille), ("Réglages", self._reglages)):
             cadre = ttk.Frame(onglets, padding=8)
             onglets.add(cadre, text=titre)
             construire(cadre)
-        ttk.Button(self.root, text=f"▶ Lancer {self.cfg['nom']} (voix + hologramme)",
-                   command=lambda: subprocess.Popen([sys.executable, "-m", "orion"])).pack(pady=6)
+        bas = ttk.Frame(self.root)
+        bas.pack(pady=6)
+        lancer = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, "-m", "orion"]
+        ttk.Button(bas, text=f"▶ Lancer {self.cfg['nom']} (voix + hologramme)",
+                   command=lambda: subprocess.Popen(lancer)).pack(side="left", padx=4)
+        ttk.Button(bas, text="Crédits (PDF)", command=self._credits_pdf).pack(side="left", padx=4)
 
     # --- Discussion -------------------------------------------------------------
     def _discussion(self, f):
@@ -258,7 +262,7 @@ class Panneau:
         if v:
             bouche = Bouche(dict(self.cfg, voix_id=v[0]))
             threading.Thread(target=lambda: (bouche.dire(salutation(dict(self.cfg, genre=self.genre_voix.get()))),
-                                             bouche.proc.kill()), daemon=True).start()
+                                             bouche.fermer()), daemon=True).start()
 
     def _choisir_voix(self):
         v = self._voix_selectionnee()
@@ -280,6 +284,111 @@ class Panneau:
         requete = f"installer voix synthèse vocale {self.langue.get()} {systeme} gratuite"
         webbrowser.open("https://duckduckgo.com/?q=" + requete.replace(" ", "+"))
 
+    # --- Langues de discussion ------------------------------------------------------
+    def _langues(self, f):
+        ttk.Label(f, text="Langues dans lesquelles on peut parler à Orion. Elles s'installent sur cet ordinateur "
+                          "(internet nécessaire une seule fois), puis tout fonctionne hors ligne.",
+                  wraplength=720, justify="left").pack(anchor="w")
+        self.arbre_langues = ttk.Treeview(f, columns=("etat", "place"), height=11)
+        self.arbre_langues.heading("#0", text="Langue")
+        self.arbre_langues.heading("etat", text="État")
+        self.arbre_langues.heading("place", text="Espace occupé")
+        self.arbre_langues.pack(fill="both", expand=True, pady=4)
+        boutons = ttk.Frame(f)
+        boutons.pack(fill="x")
+        ttk.Button(boutons, text="Installer…", command=self._installer_langue).pack(side="left")
+        ttk.Button(boutons, text="Retirer", command=self._retirer_langue).pack(side="left")
+        ttk.Button(boutons, text="Discuter dans cette langue", command=self._utiliser_langue).pack(side="left")
+        ttk.Button(boutons, text="Crédits des traductions", command=self._credits).pack(side="right")
+        self.etat_langue = tk.StringVar()
+        ttk.Label(f, textvariable=self.etat_langue, foreground=ACCENT).pack(anchor="w", pady=4)
+        ttk.Label(f, text="Orion réfléchit en français : vos phrases sont traduites, puis ses réponses. La qualité "
+                          "est correcte mais pas parfaite pour les termes techniques.",
+                  foreground=DISCRET, wraplength=720, justify="left").pack(anchor="w")
+        self._rafraichir_langues()
+
+    def _rafraichir_langues(self):
+        self.arbre_langues.delete(*self.arbre_langues.get_children())
+        actuelle = self.cfg.get("langue_discussion", "fr")
+        for code, infos in langues.CATALOGUE.items():
+            if code == "fr":
+                etat = "langue d'Orion (toujours présente)"
+            elif langues.installee(code):
+                etat = "installée"
+            else:
+                etat = "—"
+            if code == actuelle:
+                etat += " · utilisée pour discuter"
+            place = f"{langues.occupe(code) / 1e6:.0f} Mo" if code != "fr" and langues.installee(code) else ""
+            self.arbre_langues.insert("", "end", iid=code, text=infos["nom"], values=(etat, place))
+
+    def _langue_choisie(self):
+        sel = self.arbre_langues.selection()
+        return sel[0] if sel else None
+
+    def _installer_langue(self):
+        code = self._langue_choisie()
+        if not code or langues.installee(code):
+            return
+        self.etat_langue.set("Calcul de l'espace nécessaire…")
+
+        def estimer():
+            try:
+                lignes, libre = langues.estimer(code)
+            except Exception as e:
+                self.root.after(0, lambda: self.etat_langue.set(f"Impossible d'estimer (internet ?) : {e}"))
+                return
+            self.root.after(0, lambda: self._confirmer_installation(code, lignes, libre))
+        threading.Thread(target=estimer, daemon=True).start()
+
+    def _confirmer_installation(self, code, lignes, libre):
+        total = sum(o for _, o in lignes)
+        detail = "\n".join(f"• {libelle} : {o / 1e6:.0f} Mo" for libelle, o in lignes)
+        texte = (f"Installer le {langues.nom(code)} occupera environ {total / 1e6:.0f} Mo :\n\n{detail}\n\n"
+                 f"Espace libre : {libre / 1e9:.1f} Go.\nLes modèles de traduction partagés (anglais ↔ français) "
+                 "ne sont téléchargés qu'une fois pour toutes les langues.")
+        if total * 1.2 > libre:
+            messagebox.showerror("Espace insuffisant", texte)
+            self.etat_langue.set("")
+            return
+        if not messagebox.askokcancel("Installer une langue", texte + "\n\nContinuer ?"):
+            self.etat_langue.set("")
+            return
+
+        def installer():
+            try:
+                langues.installer(code, lambda m: self.root.after(0, lambda: self.etat_langue.set(m)))
+            except Exception as e:
+                self.root.after(0, lambda: self.etat_langue.set(f"Échec de l'installation : {e}"))
+            self.root.after(0, self._rafraichir_langues)
+        threading.Thread(target=installer, daemon=True).start()
+
+    def _retirer_langue(self):
+        code = self._langue_choisie()
+        if not code or code == "fr" or not langues.installee(code):
+            return
+        if messagebox.askokcancel("Retirer", f"Retirer le {langues.nom(code)} et libérer "
+                                             f"{langues.occupe(code) / 1e6:.0f} Mo ?"):
+            langues.retirer(code)
+            if self.cfg.get("langue_discussion") == code:
+                self.cfg["langue_discussion"] = "fr"
+                sauver(self.cfg)
+            self._rafraichir_langues()
+
+    def _utiliser_langue(self):
+        code = self._langue_choisie()
+        if code and langues.installee(code):
+            self.cfg["langue_discussion"] = code
+            sauver(self.cfg)
+            self._rafraichir_langues()
+            messagebox.showinfo("Langue", f"On parlera à Orion en {langues.nom(code)}. Pensez à lui choisir une "
+                                          "voix dans cette langue (onglet Voix). Relancez Orion pour appliquer.")
+
+    def _credits(self):
+        textes = langues.credits()
+        messagebox.showinfo("Crédits des traductions", "\n\n".join(textes) if textes else
+                            "Aucun modèle de traduction installé.")
+
     # --- Famille ----------------------------------------------------------------
     def _famille(self, f):
         ttk.Label(f, text="Voix enregistrées (Orion reconnaît ces personnes) :").pack(anchor="w")
@@ -292,8 +401,10 @@ class Panneau:
         ttk.Entry(ligne, textvariable=self.prenom).pack(side="left")
         ttk.Button(ligne, text="Enregistrer sa voix", command=self._enroler).pack(side="left")
         ttk.Button(ligne, text="Supprimer", command=self._supprimer_voix).pack(side="left")
-        ttk.Label(f, text="L'enregistrement s'ouvre dans une console : lisez 5 phrases à voix haute.",
-                  foreground=DISCRET).pack(anchor="w")
+        self.etat_enrolement = tk.StringVar(value="Cliquez, puis lisez 5 phrases à voix haute, une par une. "
+                                                  "Fermez Orion vocal pendant l'enregistrement (micro partagé).")
+        ttk.Label(f, textvariable=self.etat_enrolement, foreground=DISCRET, wraplength=720,
+                  justify="left").pack(anchor="w")
 
     def _profils(self):
         return json.loads(PROFILS.read_text()) if PROFILS.exists() else {}
@@ -304,8 +415,37 @@ class Panneau:
             self.liste_voix.insert("end", nom)
 
     def _enroler(self):
-        if self.prenom.get().strip():
-            subprocess.Popen([sys.executable, "-m", "orion", "enroler", self.prenom.get().strip()])
+        """Enregistre la voix dans le panneau même (la version installée n'a pas de console)."""
+        nom = self.prenom.get().strip()
+        if not nom:
+            return
+
+        def afficher(message):
+            self.root.after(0, lambda: self.etat_enrolement.set(message))
+
+        def enregistrer():
+            from .config import UTILISATEUR
+            from .modeles import installer, manquants
+            from .voix import Oreille, Profils
+            try:
+                if manquants(UTILISATEUR / "models"):
+                    afficher("Téléchargement des modèles vocaux (première fois)…")
+                    installer(UTILISATEUR / "models")
+                oreille, vecteurs = Oreille(self.cfg), []
+                afficher(f"{nom}, lisez une phrase à voix haute… (1/5)")
+                while len(vecteurs) < 5:
+                    texte, vecteur = oreille.phrase()
+                    if vecteur:
+                        vecteurs.append(vecteur)
+                        afficher(f"✓ « {texte} » — phrase suivante ({len(vecteurs) + 1}/5)" if len(vecteurs) < 5
+                                 else "Enregistrement terminé.")
+                oreille.flux.stop()
+                Profils(self.cfg["seuil_locuteur"]).enregistrer(nom, vecteurs)
+                afficher(f"La voix de {nom} est enregistrée : {self.cfg['nom']} la reconnaîtra.")
+                self.root.after(0, self._rafraichir_voix)
+            except Exception as e:
+                afficher(f"Échec de l'enregistrement : {e}")
+        threading.Thread(target=enregistrer, daemon=True).start()
 
     def _supprimer_voix(self):
         profils = self._profils()
@@ -319,6 +459,7 @@ class Panneau:
         c = self.cfg
         self.champs = {
             "nom": tk.StringVar(value=c["nom"]),
+            "nom_phonetique": tk.StringVar(value=c.get("nom_phonetique", "")),
             "mots_eveil": tk.StringVar(value=", ".join(c["mots_eveil"])),
             "aimp_exe": tk.StringVar(value=c["aimp_exe"]),
             "dossier_musique": tk.StringVar(value=c["dossier_musique"]),
@@ -327,16 +468,18 @@ class Panneau:
             "llm_modele": tk.StringVar(value=c["llm"]["modele"]),
             "transparent": tk.BooleanVar(value=c["hologramme"]["transparent"]),
         }
-        lignes = [("Nom de l'assistant", "nom"), ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
+        lignes = [("Nom de l'assistant", "nom"), ("Prononciation du nom (facultatif, ex. Oh-ri-on)", "nom_phonetique"),
+                  ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
                   ("Chemin d'AIMP", "aimp_exe"), ("Dossier de musique", "dossier_musique"),
                   ("Modèle Ollama", "llm_modele")]
         for i, (lib, cle) in enumerate(lignes):
             ttk.Label(f, text=lib).grid(row=i, column=0, sticky="w", pady=2)
             ttk.Entry(f, textvariable=self.champs[cle], width=50).grid(row=i, column=1, sticky="we")
         ttk.Button(f, text="…", width=3, command=lambda: self.champs["aimp_exe"].set(
-            filedialog.askopenfilename() or self.champs["aimp_exe"].get())).grid(row=2, column=2)
+            filedialog.askopenfilename() or self.champs["aimp_exe"].get())).grid(row=3, column=2)
         ttk.Button(f, text="…", width=3, command=lambda: self.champs["dossier_musique"].set(
-            filedialog.askdirectory() or self.champs["dossier_musique"].get())).grid(row=3, column=2)
+            filedialog.askdirectory() or self.champs["dossier_musique"].get())).grid(row=4, column=2)
+        ttk.Button(f, text="▶", width=3, command=self._ecouter_nom).grid(row=1, column=2)
         n = len(lignes)
         ttk.Label(f, text="Exigence de reconnaissance des voix").grid(row=n, column=0, sticky="w")
         ttk.Scale(f, from_=0.3, to=0.8, variable=self.champs["seuil_locuteur"]).grid(row=n, column=1, sticky="we")
@@ -346,15 +489,28 @@ class Panneau:
                         variable=self.champs["llm_actif"]).grid(row=n + 2, column=1, sticky="w")
         ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 3, column=1, sticky="e", pady=8)
 
+    def _ecouter_nom(self):
+        """Fait dire le nom avec la prononciation saisie, pour l'ajuster à l'oreille."""
+        cfg = dict(self.cfg, nom=self.champs["nom"].get() or "Orion",
+                   nom_phonetique=self.champs["nom_phonetique"].get())
+        bouche = Bouche(cfg)
+        threading.Thread(target=lambda: (bouche.dire(f"Bonjour, je m'appelle {cfg['nom']}."), bouche.fermer()),
+                         daemon=True).start()
+
     def _sauver(self):
         v = {k: var.get() for k, var in self.champs.items()}
-        self.cfg.update(nom=v["nom"].strip() or "Orion", aimp_exe=v["aimp_exe"],
+        self.cfg.update(nom=v["nom"].strip() or "Orion", nom_phonetique=v["nom_phonetique"].strip(),
+                        aimp_exe=v["aimp_exe"],
                         dossier_musique=v["dossier_musique"], seuil_locuteur=round(v["seuil_locuteur"], 2),
                         mots_eveil=[m.strip().lower() for m in v["mots_eveil"].split(",") if m.strip()])
         self.cfg["llm"].update(actif=v["llm_actif"], modele=v["llm_modele"])
         self.cfg["hologramme"].update(transparent=v["transparent"])
         sauver(self.cfg)
         messagebox.showinfo("Réglages", "Enregistré. Relancez l'assistant pour appliquer.")
+
+    def _credits_pdf(self):
+        from .credits import generer_pdf
+        webbrowser.open(generer_pdf().as_uri())
 
     def lancer(self):
         self.root.mainloop()

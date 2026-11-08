@@ -1,0 +1,20 @@
+{
+ "projet": {"nom": "Orion", "auteur": "Aymeric Malchrowicz", "editeur": "MalchroSoft",
+            "site": "https://github.com/malchrosoft/orion-assistant", "licence": "PolyForm Strict 1.0.0",
+            "annee": "2026"},
+ "composants": [
+  {"nom": "Python", "role": "le langage et son environnement d'exécution", "auteurs": "Python Software Foundation", "licence": "PSF License", "url": "https://www.python.org", "motscles": "python cpython langage"},
+  {"nom": "Tcl/Tk et Tkinter", "role": "l'hologramme et le panneau", "auteurs": "les développeurs de Tcl/Tk et de Python", "licence": "licence de type BSD", "url": "https://www.tcl-lang.org", "motscles": "tkinter tk tcl hologramme interface graphique panneau"},
+  {"nom": "Vosk", "role": "la reconnaissance vocale hors ligne", "auteurs": "Alpha Cephei, d'après la boîte à outils Kaldi", "licence": "Apache 2.0", "url": "https://alphacephei.com/vosk/", "motscles": "vosk kaldi reconnaissance vocale ecoute micro comprendre parole alpha cephei"},
+  {"nom": "Modèles Vosk", "role": "les modèles de reconnaissance de la parole et des voix de la famille", "auteurs": "Alpha Cephei", "licence": "Apache 2.0", "url": "https://alphacephei.com/vosk/models", "motscles": "modeles vosk modele voix famille locuteur empreinte"},
+  {"nom": "pyttsx3", "role": "la synthèse vocale par les voix du système", "auteurs": "Natesh M Bhat et contributeurs", "licence": "MPL-2.0", "url": "https://github.com/nateshmbhat/pyttsx3", "motscles": "pyttsx3 synthese vocale voix parler parole tts"},
+  {"nom": "sounddevice et PortAudio", "role": "l'accès au micro", "auteurs": "Matthias Geier ; projet PortAudio", "licence": "MIT", "url": "https://python-sounddevice.readthedocs.io", "motscles": "sounddevice portaudio micro microphone audio son"},
+  {"nom": "SQLite", "role": "la base de savoir et sa recherche plein texte", "auteurs": "D. Richard Hipp et l'équipe SQLite", "licence": "domaine public", "url": "https://www.sqlite.org", "motscles": "sqlite base de donnees savoir recherche fts5"},
+  {"nom": "CTranslate2", "role": "le moteur de traduction hors ligne", "auteurs": "OpenNMT", "licence": "MIT", "url": "https://github.com/OpenNMT/CTranslate2", "motscles": "ctranslate2 opennmt traduction moteur"},
+  {"nom": "SentencePiece", "role": "le découpage du texte pour la traduction", "auteurs": "Google", "licence": "Apache 2.0", "url": "https://github.com/google/sentencepiece", "motscles": "sentencepiece google decoupage traduction"},
+  {"nom": "Argos Translate et OPUS-MT", "role": "les modèles de traduction", "auteurs": "Argos Open Technologies ; Jörg Tiedemann et Santhosh Thottingal pour OPUS-MT", "licence": "MIT ou CC0 pour Argos, CC-BY 4.0 pour les modèles OPUS-MT", "url": "https://github.com/argosopentech/argos-translate", "motscles": "argos opus mt traduction modeles tiedemann thottingal langues"},
+  {"nom": "NumPy et PyYAML", "role": "des briques de calcul et de configuration du moteur de traduction", "auteurs": "communautés NumPy et PyYAML", "licence": "BSD-3-Clause ; MIT", "url": "https://numpy.org", "motscles": "numpy pyyaml yaml calcul"},
+  {"nom": "Wikipédia", "role": "la base de connaissance externe, avec ton accord", "auteurs": "les contributeurs de Wikipédia", "licence": "CC BY-SA 4.0", "url": "https://fr.wikipedia.org", "motscles": "wikipedia encyclopedie base externe"},
+  {"nom": "PyInstaller et Inno Setup", "role": "la fabrication des installateurs", "auteurs": "équipe PyInstaller ; Jordan Russell et Martijn Laan", "licence": "GPL-2.0 avec exception ; licence Inno Setup", "url": "https://pyinstaller.org", "motscles": "pyinstaller inno setup installateur packaging"}
+ ]
+}

@@ -4,12 +4,23 @@ Orion parle et écoute en français, sans Internet. Il reconnaît chaque membre 
 
 Projet ludique et public, inspiré de [jarvis-assistant](https://github.com/jaouadinoham2/jarvis-assistant).
 
-## Démarrer (utilisateur lambda)
+## Installer (sans Python)
 
-1. Téléchargez et décompressez le dossier d'Orion.
-2. Double-cliquez sur **`Orion.bat`** (Windows), **`Orion.command`** (macOS) ou **`orion.sh`** (Linux).
+Téléchargez l'installateur de votre système dans les [Releases](https://github.com/malchrosoft/orion-assistant/releases) :
 
-Au premier lancement, Orion s'installe tout seul : composants, modèles vocaux (≈ 55 Mo) et raccourci sur le bureau. Ensuite, il suffit d'utiliser le raccourci. Si Python manque, la page de téléchargement s'ouvre.
+| Système | Fichier | Remarque |
+|---|---|---|
+| Windows 10/11 (64 bits) | `Orion-Setup-x.y.z.exe` | Installation sans droits administrateur |
+| macOS (Apple Silicon ou Intel) | `Orion-x.y.z-macos-*.dmg` | Application non signée par Apple : au premier lancement, clic droit → Ouvrir |
+| Linux (Debian, Ubuntu, Mint…) | `orion_x.y.z_amd64.deb` ou `.tar.gz` | Le `.deb` installe aussi PortAudio et eSpeak NG |
+
+Python est inclus. Au premier lancement, Orion télécharge ses modèles vocaux (≈ 55 Mo) ; ensuite tout fonctionne hors ligne. Les systèmes 32 bits et trop anciens ne sont pas pris en charge ; Orion vise en revanche les machines **modestes** (≈ 300 Mo de mémoire).
+
+Réglages, voix de la famille, langues et fiches sont rangés dans le dossier de l'utilisateur : `%APPDATA%\Orion`, `~/Library/Application Support/Orion` ou `~/.local/share/orion`.
+
+### Depuis les sources
+
+Double-cliquez sur **`Orion.bat`** (Windows), **`Orion.command`** (macOS) ou **`orion.sh`** (Linux) : Orion s'installe au premier lancement (Python requis).
 
 Avec la souris :
 - **Clic droit sur l'hologramme** : se taire, ouvrir le panneau, quitter.
@@ -26,7 +37,20 @@ Au tout premier démarrage, Orion annonce la langue de sa voix et **demande conf
   - « mets de la musique », « morceau suivant », « joue Daft Punk sur Spotify »
   - « monte le son », « ouvre la calculatrice », « combien font 12 fois 7 »
   - « c'est quoi le théorème de Pythagore », « faut-il isoler la toiture en premier »
-  - « parle en anglais », « qui suis-je »
+  - « parle avec moi en espagnol », « qui suis-je »
+  - « retiens que je suis allergique aux arachides », « que sais-tu de moi ? »
+  - « fais-moi une fiche PDF sur le théorème de Pythagore avec renvois », « génère les crédits en PDF »
+  - « quelles bibliothèques utilises-tu ? », « qui a fait ta reconnaissance vocale ? »
+
+## Chaque personne, à sa façon
+
+- **Tutoiement ou vouvoiement** : au premier échange, Orion demande « est-ce qu'on se tutoie ? ». On peut changer à tout moment (« vouvoie-moi », « tutoie-moi »). Le choix est retenu pour chaque voix.
+- **Voix non reconnue** : Orion le signale une fois, puis répond de façon générale. Il ne retient rien des personnes qu'il ne connaît pas.
+- **Ce qu'il retient** des voix connues, **uniquement sur cet ordinateur** :
+  - l'âge, le niveau scolaire et l'humeur récente, quand la personne les mentionne (« j'ai 12 ans », « je suis en cinquième », « je suis fatigué ») ;
+  - les 20 derniers échanges, pas davantage ;
+  - **sans limite de temps, seulement à la demande** : « retiens que… », « souviens-toi que… ».
+- **Garder la main** : « que sais-tu de moi ? » pour tout voir, « oublie que… » pour un souvenir, « oublie ce que tu sais sur moi » pour tout effacer.
 
 > Avec des haut-parleurs, Orion ignore les mots qu'il est en train de prononcer pour ne pas s'interrompre lui-même. Un casque ou un micro directionnel rend l'interruption plus fiable.
 
@@ -39,10 +63,22 @@ Pour l'ouvrir : `python -m orion panneau`, ou un double-clic sur l'hologramme.
 | Discussion | Discuter au clavier ; chaque réponse affiche ses sources, cliquables |
 | Savoir | Fiches, **apprendre depuis un lien**, oublier, vérifier les références en ligne |
 | Voix | Langue et voix d'Orion, écoute d'essai, **façon de se présenter** (neutre par défaut, simplement « Orion » ; féminin ou masculin, proposé selon la voix choisie), **aide pour installer des voix** selon l'OS (bouton vers les réglages système, recherche internet type) |
-| Famille | Enregistrer ou supprimer la voix d'un membre de la famille |
-| Réglages | Nom, mots d'éveil, AIMP, dossier de musique, exigence de reconnaissance, IA locale |
+| Langues | **Ajouter ou retirer des langues de discussion** (sauf le français), avec l'**espace nécessaire annoncé avant** toute installation, et les crédits des modèles de traduction |
+| Famille | Enregistrer (directement dans le panneau) ou supprimer la voix d'un membre de la famille |
+| Réglages | Nom, **prononciation du nom** (facultatif, ex. « Oh-ri-on », avec écoute d'essai), mots d'éveil, AIMP, dossier de musique, exigence de reconnaissance, IA locale |
 
-La langue choisie s'applique à la **voix** d'Orion. Sa compréhension reste en français, avec le modèle Vosk `small-fr`.
+Un bouton **Crédits (PDF)** produit la liste des composants utilisés, avec leurs auteurs et licences.
+
+## Langues de discussion
+
+Orion pense en français. Pour une autre langue, vos phrases sont traduites en français, puis ses réponses dans votre langue, **sur l'ordinateur, hors ligne**.
+
+- **Langues proposées** : anglais, espagnol, allemand, italien, portugais, néerlandais, polonais, turc, russe, chinois, arabe.
+- **Rien n'est stocké dans le dépôt** : la reconnaissance vocale de la langue (Vosk, 32 à 52 Mo) et les modèles de traduction (Argos Translate / OPUS-MT, 65 à 285 Mo par sens) se téléchargent à l'installation de la langue. Internet n'est nécessaire qu'à ce moment-là.
+- **L'espace nécessaire est annoncé avant**, comparé à l'espace libre. Les modèles anglais ↔ français, qui servent de relais aux autres langues, ne sont téléchargés qu'une fois.
+- **Retirer une langue** libère sa place, sauf ce qui sert encore à une autre langue. Le français ne se retire pas.
+- **Les mots essentiels** (« stop », « oui », « non ») sont reconnus grâce à un petit lexique fait à la main dans chaque langue, plus fiable que la traduction automatique.
+- La traduction est correcte, mais imparfaite pour les termes techniques. Pour le russe, le chinois et l'arabe, ajoutez le nom d'Orion écrit dans cet alphabet aux mots d'éveil.
 
 ## Des réponses sourcées, et une méfiance envers le web
 
@@ -82,10 +118,13 @@ Il faut environ 300 Mo de RAM et Python 3.9 ou plus récent, sur Windows, macOS 
 ```bash
 python install.py              # installation guidée : 3 questions, Entrée = valeur proposée
 python install.py --auto       # installation sans question
-pip install pyinstaller && python build_exe.py   # dossier dist/Orion avec Orion.exe, sans Python
+pip install pyinstaller -r requirements.txt -r requirements-traduction.txt
+python build_exe.py            # application autonome dans dist/ (pour l'OS courant)
 ```
 
-La version packagée n'inclut pas les modèles, pour rester légère : ils se téléchargent au premier lancement. Construisez-la sur l'OS cible.
+Les installateurs des trois systèmes sont fabriqués par GitHub Actions (`.github/workflows/paquets.yml`) : lancement manuel depuis l'onglet Actions, ou automatique en poussant une étiquette `vX.Y.Z`, qui publie une Release. Scripts : `packaging/windows/orion.iss` (Inno Setup), `packaging/macos/creer_dmg.sh`, `packaging/linux/creer_deb.sh`.
+
+Les modèles ne sont pas inclus, pour rester léger. Les composants tiers et leurs licences sont listés dans [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Commandes
 

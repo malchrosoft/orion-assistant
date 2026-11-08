@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Orion">
+  <!-- SPDX-FileCopyrightText: 2026 Aymeric Malchrowicz -->
+  <!-- SPDX-License-Identifier: LicenseRef-PolyForm-Strict-1.0.0 -->
+  <title>Orion</title>
+  <rect width="200" height="200" rx="40" fill="#05090d"/>
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#0b5566" stroke-width="3"/>
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#29e0ff" stroke-width="3" stroke-dasharray="90 40"/>
+  <g stroke="#29e0ff" stroke-width="1.6" stroke-dasharray="2 4" opacity=".7">
+    <path d="M70 52 L118 57 M70 52 L90 100 M118 57 L110 104 M90 100 L100 102 L110 104 M90 100 L76 138 M110 104 L126 134 M70 52 L100 40 L118 57"/>
+  </g>
+  <g fill="#9ffcff">
+    <circle cx="70" cy="52" r="5"/><circle cx="118" cy="57" r="4"/><circle cx="100" cy="40" r="2.5"/>
+    <circle cx="90" cy="100" r="3.2"/><circle cx="100" cy="102" r="3.2"/><circle cx="110" cy="104" r="3.2"/>
+    <circle cx="76" cy="138" r="3.5"/><circle cx="126" cy="134" r="5"/>
+  </g>
+</svg>
