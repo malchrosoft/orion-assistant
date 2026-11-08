@@ -10,7 +10,7 @@ import random
 import re
 import urllib.request
 
-from . import bible, knowledge, personnes, web
+from . import bible, dossiers, espace, knowledge, personnes, web
 from .persona import presentation
 from .texte import normaliser, sans_accents
 
@@ -82,6 +82,7 @@ class Cerveau:
         self.tutoiement_demande = set()   # une seule fois par session et par personne
         self.signaler_inconnu = False     # mode vocal : prévenir quand une voix n'est pas reconnue
         self.inconnu_signale = False
+        self.alerte_espace_donnee = False  # « j'approche de ma limite » : une fois par session
 
     def repondre(self, phrase: str, locuteur: str):
         """Renvoie (texte à dire, tâche) ; tâche est une fonction à exécuter (état « exécution ») ou None.
@@ -131,6 +132,8 @@ class Cerveau:
                 return "Je ne reconnais pas ta voix : je ne peux rien retenir pour toi.", None
             souvenir = re.sub(r"^(?:retiens|souviens-toi|rappelle-toi|mémorise|n'oublie pas)\s+(?:que |qu')?", "",
                               phrase.strip(), flags=re.IGNORECASE).rstrip(" .")
+            if not espace.place_pour(self.cfg, 10_000):
+                return self._adapter(espace.refus(self.cfg), locuteur), None
             personnes.retenir(locuteur, souvenir)
             return self._adapter("C'est retenu, sans limite de temps : " + personnes.a_la_deuxieme(souvenir) + ".",
                                  locuteur), None
@@ -148,6 +151,15 @@ class Cerveau:
                                  "souviendrais plus de rien te concernant — ni ce que tu m'as demandé de retenir, ni "
                                  "nos échanges. Seule ta voix resterait, pour te reconnaître. Tu confirmes ? Réponds "
                                  "oui ou non.", locuteur), None
+
+        if re.search(r"\b(limite|espace|memoire|place)\b", t) and re.search(
+                r"\b(augmente|diminue|change|modifie|regle|agrandis|reduis|passe)\b", t):
+            return self._adapter("Ce réglage ne se change pas à la voix, par sécurité : passe par le panneau, onglet "
+                                 "Réglages, ou par la commande orion limite.", locuteur), None
+        if re.search(r"\b(combien de place|quelle place|espace disque|combien d espace|ta memoire est pleine)\b", t):
+            o, l, r = espace.etat(self.cfg)
+            return self._adapter(f"J'occupe {espace.mo(o)} sur les {espace.mo(l)} autorisés, "
+                                 f"soit {r * 100:.0f} %.", locuteur), None
 
         prefixe = ""
         if not connu and self.signaler_inconnu and not self.inconnu_signale:
@@ -170,16 +182,21 @@ class Cerveau:
             return None, tache_adaptee
         return self._finaliser(prefixe + reponse, phrase, locuteur), None
 
-    def _fiche_pdf(self, sujet, renvois):
+    def _fiche_pdf(self, sujet, renvois, cle=None):
         """Fiche PDF : base locale d'abord ; sinon Wikipédia, après accord (comme pour les réponses orales)."""
         from . import document
         a = self.actions
         fiche = knowledge.chercher(sujet)
 
         def produire(f):
-            chemin = document.generer(f, renvois)
+            try:
+                dossier = dossiers.chemin(self.cfg, cle)
+                chemin = document.generer(f, renvois, dossier)
+            except OSError as e:
+                return f"Je n'arrive pas à enregistrer la fiche : {e}."
             a.ouvrir_lien(chemin.as_uri())
-            return f"Voilà la fiche sur {f['titre']}, avec ses sources en bas de page."
+            ou = f" dans le dossier {cle or dossiers.cle_par_defaut(self.cfg)}"
+            return f"Voilà la fiche sur {f['titre']}, enregistrée{ou}, avec ses sources en bas de page."
         if fiche:
             if any(s["niveau"] == 0 for s in fiche["sources"] if s["consulte"]):
                 fiche["avertissement"] = ("Attention : cette fiche provient d'une page internet non vérifiée. "
@@ -213,7 +230,11 @@ class Cerveau:
         if locuteur == "invité":
             return texte
         texte = self._adapter(texte, locuteur)
-        personnes.noter_echange(locuteur, phrase, texte)
+        if espace.place_pour(self.cfg, 2_000):  # l'historique n'est pas essentiel : sans place, on ne l'écrit pas
+            personnes.noter_echange(locuteur, phrase, texte)
+        if not self.alerte_espace_donnee and espace.alerte(self.cfg) and "plus de place" not in texte:
+            self.alerte_espace_donnee = True
+            texte += " " + self._adapter(espace.alerte(self.cfg), locuteur)
         if (personnes.fiche(locuteur).get("tutoiement") is None and locuteur not in self.tutoiement_demande
                 and not self.en_attente and not texte.rstrip().endswith("?")):
             self.tutoiement_demande.add(locuteur)
@@ -242,15 +263,22 @@ class Cerveau:
 
         # --- Crédits ----------------------------------------------------------
         if re.search(r"\bcredits?\b", t) and re.search(r"\b(pdf|document|genere|imprime|fichier)\b", t):
+            cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
+
             def generer():
                 from .credits import generer_pdf
-                chemin = generer_pdf()
+                try:
+                    chemin = generer_pdf(dossiers.chemin(self.cfg, cle) / "Orion-credits.pdf")
+                except OSError as e:
+                    return f"Je n'arrive pas à enregistrer le document : {e}."
                 a.ouvrir_lien(chemin.as_uri())
                 return "Voilà la liste complète des crédits, en PDF."
             return None, generer
-        m = re.search(r"\b(?:fiche|document|pdf|resume)\b.*?\b(?:sur|de|du|des|a propos de|concernant) (?:la |le |les |l )?(.+?)(?: avec (?:des )?renvois?| en pdf)?$", t)
+        cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
+        t_sujet = re.sub(rf"\s+(?:dans|vers) (?:le dossier |mon dossier |mes )?{normaliser(cle)}\b", "", t) if cle else t
+        m = re.search(r"\b(?:fiche|document|pdf|resume)\b.*?\b(?:sur|de|du|des|a propos de|concernant) (?:la |le |les |l )?(.+?)(?: avec (?:des )?renvois?| en pdf)*$", t_sujet)
         if m and re.search(r"\b(pdf|fiche|document)\b", t) and re.search(r"\b(fais|fait|genere|cree|prepare|imprime|donne)\b", t):
-            return self._fiche_pdf(m.group(1), bool(re.search(r"\brenvois?\b", t)))
+            return self._fiche_pdf(m.group(1), bool(re.search(r"\brenvois?\b", t)), cle)
         if re.search(r"\b(credits?|bibliotheques?|librairies?|composants?|logiciels? libres?|"
                      r"qui t a (fait|programme|developpe)|avec quoi (tu es|es tu) fait)\b", t):
             from .credits import enoncer

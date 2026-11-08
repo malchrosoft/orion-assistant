@@ -13,7 +13,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
-from . import knowledge, langues, web
+from . import espace, knowledge, langues, web
 from .bouche import LANGUES, Bouche, lister_voix
 from .persona import GENRES, salutation
 from .actions import Actions
@@ -488,6 +488,108 @@ class Panneau:
         ttk.Checkbutton(f, text="Réponses libres par IA locale (Ollama), signalées comme non sourcées",
                         variable=self.champs["llm_actif"]).grid(row=n + 2, column=1, sticky="w")
         ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 3, column=1, sticky="e", pady=8)
+
+        cadre = ttk.LabelFrame(f, text="Espace disque d'Orion", padding=6)
+        cadre.grid(row=n + 4, column=0, columnspan=3, sticky="we", pady=6)
+        self.texte_espace = tk.StringVar()
+        ttk.Label(cadre, textvariable=self.texte_espace, justify="left").grid(row=0, column=0, columnspan=4, sticky="w")
+        self.jauge = ttk.Progressbar(cadre, length=420, maximum=100)
+        self.jauge.grid(row=1, column=0, columnspan=4, sticky="we", pady=4)
+        ttk.Label(cadre, text="Limite (Mo) :").grid(row=2, column=0, sticky="w")
+        self.limite_mo = tk.IntVar(value=c.get("limite_disque_mo", espace.LIMITE_DEFAUT_MO))
+        ttk.Entry(cadre, textvariable=self.limite_mo, width=8).grid(row=2, column=1, sticky="w")
+        ttk.Button(cadre, text="Changer la limite…", command=self._changer_limite).grid(row=2, column=2)
+        ttk.Button(cadre, text="Alléger", command=self._alleger).grid(row=2, column=3)
+        self._rafraichir_espace()
+
+        cadre_d = ttk.LabelFrame(f, text="Dossiers d'enregistrement des documents (mot-clé → chemin)", padding=6)
+        cadre_d.grid(row=n + 5, column=0, columnspan=3, sticky="we", pady=6)
+        self.liste_dossiers = tk.Listbox(cadre_d, height=4, width=80)
+        self.liste_dossiers.grid(row=0, column=0, columnspan=4, sticky="we")
+        ttk.Button(cadre_d, text="Ajouter…", command=self._ajouter_dossier).grid(row=1, column=0, sticky="w")
+        ttk.Button(cadre_d, text="Retirer", command=self._retirer_dossier).grid(row=1, column=1, sticky="w")
+        ttk.Button(cadre_d, text="Par défaut", command=self._dossier_defaut).grid(row=1, column=2, sticky="w")
+        ttk.Label(cadre_d, text="À la voix : « fais une fiche PDF sur Pythagore dans école ». Ces documents ne "
+                                "comptent pas dans la limite d'espace d'Orion.", foreground=DISCRET,
+                  wraplength=700).grid(row=2, column=0, columnspan=4, sticky="w")
+        self._rafraichir_dossiers()
+
+    def _rafraichir_espace(self):
+        o, l, r = espace.etat(self.cfg)
+        lignes = [f"{k} : {v / espace.MO:.1f} Mo" for k, v in espace.categories().items()]
+        alerte = "\n⚠ Seuil d'alerte dépassé : allégez ou augmentez la limite." if r >= espace.SEUIL_ALERTE else ""
+        self.texte_espace.set("\n".join(lignes) + f"\nTotal : {o / espace.MO:.0f} Mo sur {l / espace.MO:.0f} Mo "
+                              f"({r:.0%}) — {espace.libre() / espace.MO:.0f} Mo libres sur le disque" + alerte)
+        self.jauge["value"] = min(100, r * 100)
+
+    def _rafraichir_dossiers(self):
+        from . import dossiers
+        self.liste_dossiers.delete(0, "end")
+        self._cles_dossiers = list(dossiers.liste(self.cfg))
+        for cle, chemin in dossiers.liste(self.cfg).items():
+            marque = "★ " if cle == dossiers.cle_par_defaut(self.cfg) else "   "
+            self.liste_dossiers.insert("end", f"{marque}{cle}  →  {chemin}")
+
+    def _cle_dossier(self):
+        sel = self.liste_dossiers.curselection()
+        return self._cles_dossiers[sel[0]] if sel else None
+
+    def _ajouter_dossier(self):
+        from tkinter import simpledialog
+        from . import dossiers
+        cle = simpledialog.askstring("Nouveau dossier", "Mot-clé pour le désigner à la voix (ex. école) :",
+                                     parent=self.root)
+        if not cle:
+            return
+        chemin = filedialog.askdirectory(title=f"Dossier « {cle} »")
+        if chemin:
+            dossiers.ajouter(self.cfg, cle, chemin)
+            sauver(self.cfg)
+            self._rafraichir_dossiers()
+
+    def _retirer_dossier(self):
+        from . import dossiers
+        cle = self._cle_dossier()
+        if cle and messagebox.askokcancel("Retirer", f"Retirer le dossier « {cle} » de la liste ? "
+                                                      "(Les fichiers qu'il contient ne sont pas supprimés.)"):
+            try:
+                dossiers.retirer(self.cfg, cle)
+            except ValueError as e:
+                return messagebox.showerror("Dossiers", str(e))
+            sauver(self.cfg)
+            self._rafraichir_dossiers()
+
+    def _dossier_defaut(self):
+        cle = self._cle_dossier()
+        if cle:
+            self.cfg["dossier_defaut"] = cle
+            sauver(self.cfg)
+            self._rafraichir_dossiers()
+
+    def _changer_limite(self):
+        try:
+            mo = int(self.limite_mo.get())
+        except (tk.TclError, ValueError):
+            return messagebox.showerror("Limite", "Indiquez une taille en Mo.")
+        avertissements = espace.verifier_nouvelle_limite(mo)
+        texte = f"Fixer la limite d'espace disque d'Orion à {mo} Mo ?"
+        if avertissements:
+            texte += "\n\n⚠ " + "\n⚠ ".join(avertissements)
+        demander = messagebox.askyesno if not avertissements else messagebox.askokcancel
+        if not demander("Limite d'espace disque", texte, icon="warning" if avertissements else "question"):
+            return
+        self.cfg["limite_disque_mo"] = mo
+        sauver(self.cfg)
+        if espace.occupe() > mo * espace.MO:
+            espace.alleger(espace.occupe() - mo * espace.MO)
+        self._rafraichir_espace()
+
+    def _alleger(self):
+        if messagebox.askokcancel("Alléger", "Ne garder que les 5 derniers échanges de chacun ? Les souvenirs "
+                                              "demandés, les voix et les langues sont conservés."):
+            libere = espace.alleger()
+            messagebox.showinfo("Alléger", f"{libere / espace.MO:.1f} Mo libérés.")
+            self._rafraichir_espace()
 
     def _ecouter_nom(self):
         """Fait dire le nom avec la prononciation saisie, pour l'ajuster à l'oreille."""

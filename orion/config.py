@@ -39,6 +39,9 @@ DEFAUT = {
     "langue": "fr",                      # langue de la voix d'Orion (la compréhension reste en français)
     "langue_confirmee": False,           # au premier lancement, Orion demande confirmation à voix haute
     "voix_id": "",                       # voix choisie dans le panneau ; vide = première voix de la langue
+    "limite_disque_mo": 1024,            # espace maximal des données d'Orion (hors documents générés)
+    "dossiers": {},                      # {mot-clé: chemin} où enregistrer les PDF ; vide = Documents/Orion
+    "dossier_defaut": "documents",            # espace maximal occupé par Orion (réglable au panneau / en commande)
     "langue_discussion": "fr",           # langue dans laquelle on parle à Orion (voir onglet Langues)
     "nom_phonetique": "",                # facultatif : comment prononcer le nom (ex. « Oh-ri-on »)
     "genre": "neutre",                   # présentation : neutre (« Orion »), feminin ou masculin

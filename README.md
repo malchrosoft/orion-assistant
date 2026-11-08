@@ -65,9 +65,29 @@ Pour l'ouvrir : `python -m orion panneau`, ou un double-clic sur l'hologramme.
 | Voix | Langue et voix d'Orion, écoute d'essai, **façon de se présenter** (neutre par défaut, simplement « Orion » ; féminin ou masculin, proposé selon la voix choisie), **aide pour installer des voix** selon l'OS (bouton vers les réglages système, recherche internet type) |
 | Langues | **Ajouter ou retirer des langues de discussion** (sauf le français), avec l'**espace nécessaire annoncé avant** toute installation, et les crédits des modèles de traduction |
 | Famille | Enregistrer (directement dans le panneau) ou supprimer la voix d'un membre de la famille |
-| Réglages | Nom, **prononciation du nom** (facultatif, ex. « Oh-ri-on », avec écoute d'essai), mots d'éveil, AIMP, dossier de musique, exigence de reconnaissance, IA locale |
+| Réglages | **Espace disque** (jauge, limite, alléger), **dossiers d'enregistrement**, nom, **prononciation du nom** (facultatif, ex. « Oh-ri-on », avec écoute d'essai), mots d'éveil, AIMP, dossier de musique, exigence de reconnaissance, IA locale |
 
 Un bouton **Crédits (PDF)** produit la liste des composants utilisés, avec leurs auteurs et licences.
+
+## Espace disque limité
+
+Orion ne remplira jamais votre disque : ses données internes n'occupent pas plus de **1 Go** par défaut (modèles vocaux, langues et mémoire). Les documents qu'il génère vous appartiennent : ils vont dans vos dossiers (voir ci-dessous) et ne comptent pas.
+
+- **Alerte à 80 %** : Orion prévient une fois par session, et le panneau affiche une jauge détaillée.
+- **Limite atteinte** : il s'allège d'abord (historiques réduits aux 5 derniers échanges). Si ça ne suffit pas, il refuse et explique que sa place est limitée par la configuration. Les souvenirs demandés et les voix ne sont jamais supprimés automatiquement.
+- **Changer la limite** : uniquement dans le panneau (Réglages → Espace disque) ou avec `python -m orion limite 2048`, **jamais à la voix**, et toujours après confirmation. Orion avertit si la valeur est incohérente : plus petite que ce qu'il occupe, supérieure à l'espace libre, ou trop gourmande.
+- « Combien de place occupes-tu ? » : Orion répond à voix haute.
+
+## Où sont enregistrés les documents
+
+Les fiches et les crédits en PDF sont enregistrés dans **vos** dossiers : par défaut `Documents/Orion`.
+
+- **Plusieurs dossiers**, chacun avec un **mot-clé** pour le désigner à la voix : « fais une fiche PDF sur Pythagore **dans école** ».
+- **Réglage** au choix :
+  - dans le panneau (Réglages → Dossiers d'enregistrement) ;
+  - en commande : `python -m orion dossiers ajouter école ~/Documents/École`, `… retirer école`, `… defaut école` ;
+  - dans `config.json` : `"dossiers": {"documents": "…", "école": "…"}` et `"dossier_defaut"`.
+- Retirer un dossier de la liste ne supprime pas ses fichiers.
 
 ## Langues de discussion
 

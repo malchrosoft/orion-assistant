@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 from . import __version__, knowledge
-from .config import UTILISATEUR
 from .credits import _logo_orion
 from .pdf import A4, Document
 
@@ -19,12 +18,12 @@ def _nom_fichier(titre):
     return re.sub(r"[^\w-]+", "-", titre, flags=re.UNICODE).strip("-")[:60] or "fiche"
 
 
-def generer(fiche, renvois=False, dossier=None):
+def generer(fiche, renvois, dossier):
     """`fiche` : {titre, contenu, domaine, sources:[{titre, url, niveau, consulte}]}. Renvoie le chemin du PDF.
     Seules les sources réellement consultées sont citées (même règle que les réponses orales)."""
     sources = [s for s in fiche.get("sources", []) if s.get("consulte")]
     lectures = [s for s in fiche.get("lectures", []) if s.get("consulte")]
-    dossier = Path(dossier or UTILISATEUR / "fiches")
+    dossier = Path(dossier)
     dossier.mkdir(parents=True, exist_ok=True)
     chemin = dossier / f"{_nom_fichier(fiche['titre'])}.pdf"
     doc = Document(titre=fiche["titre"], auteur="Orion")

@@ -10,6 +10,8 @@
   python -m orion panneau      interface graphique (discussion, savoir, famille, réglages)
   python -m orion apprendre URL [sujet]   retient une page web (toujours marquée non vérifiée)
   python -m orion verifier     vérifie en ligne les références livrées
+  python -m orion limite [Mo]  affiche l'espace occupé, ou change la limite (avec confirmation)
+  python -m orion dossiers [ajouter MOT CHEMIN | retirer MOT | defaut MOT]   dossiers d'enregistrement des PDF
 """
 import sys
 import threading
@@ -39,6 +41,54 @@ def mode_texte(cfg):
             print(f"     [{src['niveau']}] {'source' if src['portee'] == 'fiche' else 'pour aller plus loin'} : "
                   f"{src['titre']} — {src['url']}"
                   f"{'' if src['consulte'] else '  (non vérifiée)'}")
+
+
+def commande_limite(cfg, valeur=None):
+    """Affiche l'occupation ; avec une valeur, change la limite après avertissements et confirmation."""
+    from . import espace
+    from .config import sauver
+    o, l, r = espace.etat(cfg)
+    for libelle, octets in espace.categories().items():
+        print(f"  {libelle:45} {octets / espace.MO:8.1f} Mo")
+    print(f"  {'Total':45} {o / espace.MO:8.1f} Mo sur {l / espace.MO:.0f} Mo autorisés ({r:.0%})")
+    print(f"  Espace libre sur le disque : {espace.libre() / espace.MO:.0f} Mo")
+    if valeur is None:
+        return
+    try:
+        mo = int(valeur)
+    except ValueError:
+        return print("Indiquez une taille en Mo, par exemple : python -m orion limite 2048")
+    for avertissement in espace.verifier_nouvelle_limite(mo):
+        print(f"  ⚠ {avertissement}")
+    if input(f"Fixer la limite d'Orion à {mo} Mo ? (oui/non) ").strip().lower() not in ("oui", "o", "yes", "y"):
+        return print("Limite inchangée.")
+    cfg["limite_disque_mo"] = mo
+    sauver(cfg)
+    if espace.occupe() > mo * espace.MO:
+        print(f"Allègement : {espace.alleger(espace.occupe() - mo * espace.MO) / espace.MO:.1f} Mo libérés.")
+    print(f"Limite fixée à {mo} Mo.")
+
+
+def commande_dossiers(cfg, args):
+    """Liste ou modifie les dossiers où Orion enregistre les documents (mot-clé → chemin)."""
+    from . import dossiers
+    from .config import sauver
+    try:
+        if args[:1] == ["ajouter"] and len(args) >= 3:
+            dossiers.ajouter(cfg, args[1], " ".join(args[2:]))
+        elif args[:1] == ["retirer"] and len(args) == 2:
+            dossiers.retirer(cfg, args[1])
+        elif args[:1] == ["defaut"] and len(args) == 2 and args[1] in dossiers.liste(cfg):
+            cfg["dossier_defaut"] = args[1]
+        elif args:
+            return print("Usage : python -m orion dossiers [ajouter MOT CHEMIN | retirer MOT | defaut MOT]")
+    except ValueError as e:
+        return print(e)
+    if args:
+        sauver(cfg)
+    for cle, chemin in dossiers.liste(cfg).items():
+        print(f"  {'*' if cle == dossiers.cle_par_defaut(cfg) else ' '} {cle:15} {chemin}")
+    print("  (* = dossier par défaut ; à la voix : « … dans <mot-clé> »)")
 
 
 def enroler(cfg, nom):
@@ -234,6 +284,10 @@ def main():
         for statut, titre, url in web.verifier_references():
             print(f"{statut:5} {titre}\n      {url}")
         return None
+    if commande == "dossiers":
+        return commande_dossiers(cfg, args[1:])
+    if commande == "limite":
+        return commande_limite(cfg, args[1] if len(args) > 1 else None)
     if commande == "enroler":
         return enroler(cfg, args[1] if len(args) > 1 else input("Prénom : "))
     from .hologramme import Hologramme

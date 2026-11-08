@@ -169,6 +169,13 @@ def installer(code, signaler=print):
     """Télécharge ce qui manque. `signaler` reçoit des messages de progression lisibles."""
     if code not in CATALOGUE:
         raise ValueError(f"Langue inconnue : {code}")
+    from . import espace
+    from .config import charger
+    cfg = charger()
+    besoin = sum(o for _, o in estimer(code)[0])
+    if not espace.place_pour(cfg, besoin):
+        raise RuntimeError(f"Installer le {nom(code)} ({besoin / 1e6:.0f} Mo) dépasserait la limite de "
+                           f"{espace.limite(cfg) / 1e6:.0f} Mo fixée dans les réglages d'Orion.")
     if not moteur_present() and code != "fr":
         if PACKAGE:  # la version installée embarque le moteur ; pip n'y est pas disponible
             raise RuntimeError("Le moteur de traduction est absent de cette version d'Orion.")

@@ -54,6 +54,15 @@ def oublier(nom):
     _ecrire(data)
 
 
+def raccourcir_historiques(garder):
+    """Allègement : ne garde que les `garder` derniers échanges de chacun (les souvenirs demandés restent)."""
+    data = _lire()
+    for p in data.values():
+        if "historique" in p:
+            p["historique"] = p["historique"][-garder:]
+    _ecrire(data)
+
+
 def noter_echange(nom, question, reponse):
     data = _lire()
     p = data.setdefault(nom, {})
@@ -88,7 +97,8 @@ def apprendre(nom, phrase):
 
 def a_la_deuxieme(texte):
     """« je suis allergique, mon chat » → « tu es allergique, ton chat » (pour le répéter à la personne)."""
-    for motif, rempl in ((r"\bje suis\b", "tu es"), (r"\bj'ai\b", "tu as"), (r"\bje\b", "tu"),
+    for motif, rempl in ((r"\bje suis\b", "tu es"), (r"\bj'ai\b", "tu as"), (r"\bj'(\w+e)\b", r"tu \1s"),
+                         (r"\bje (\w+e)\b", r"tu \1s"), (r"\bje\b", "tu"),
                          (r"\bj'", "tu "), (r"\bmon\b", "ton"), (r"\bma\b", "ta"), (r"\bmes\b", "tes"),
                          (r"\bmoi\b", "toi"), (r"\bm'", "t'"), (r"\bme\b", "te")):
         texte = re.sub(motif, rempl, texte, flags=re.IGNORECASE)

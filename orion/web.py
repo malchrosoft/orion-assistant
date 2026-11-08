@@ -84,6 +84,10 @@ def apprendre(url, sujet=None, domaine="web"):
     titre, texte = lire_page(url)
     if not texte:
         return None, "Je n'ai trouvé aucun texte exploitable sur cette page."
+    from . import espace
+    from .config import charger
+    if not espace.place_pour(charger(), len(texte) * 4 + 10_000):
+        return None, espace.refus(charger())
     sujet = sujet or titre
     fiche = {"domaine": domaine, "titre": sujet, "motscles": normaliser(f"{sujet} {titre}"),
              "contenu": texte,

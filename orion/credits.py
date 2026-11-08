@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from . import __version__
-from .config import DATA, UTILISATEUR
+from .config import DATA
 from .pdf import A4, Document
 from .texte import normaliser
 
@@ -55,7 +55,11 @@ def generer_pdf(chemin=None):
     """Crée le PDF des crédits et renvoie son chemin."""
     d = donnees()
     p = d["projet"]
-    chemin = Path(chemin or UTILISATEUR / "Orion-credits.pdf")
+    if chemin is None:
+        from .config import charger
+        from .dossiers import chemin as dossier
+        chemin = dossier(charger()) / "Orion-credits.pdf"
+    chemin = Path(chemin)
     doc = Document(titre=f"Crédits — {p['nom']} {__version__}", auteur=p["auteur"])
     marge, largeur = 56, A4[0] - 112
 
