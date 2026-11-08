@@ -207,7 +207,7 @@ class Cerveau:
                 return "Je ne reconnais pas ta voix : je ne peux pas m'en souvenir pour toi.", None
             personnes.modifier(locuteur, tutoiement=True)
             return "D'accord, on se tutoie !", None
-        if re.search(r"\b(que sais tu de moi|qu est ce que tu sais (de|sur) moi|tu me connais)\b", t):
+        if re.search(r"\b(que sais tu de moi|tu me connais)\b|\b(sais|connais|retenu)\b.*\b(sur|de) moi$", t):
             return self._adapter(personnes.resume(locuteur) if connu else
                                  "Je n'ai pas reconnu ta voix, et je ne garde rien sur les personnes que je ne "
                                  "connais pas.", locuteur), None
@@ -521,7 +521,8 @@ class Cerveau:
             return f"Oui{prenom} ?", None
         if re.search(r"^(bonjour|salut|coucou|hello|bonsoir)\b", t):
             return random.choice([f"Bonjour{prenom} !", f"Salut{prenom}, que puis-je faire ?"]), None
-        if re.search(r"\b(qui suis je|qui je suis|tu me reconnais|qui parle|tu sais qui (je suis|c est))\b", t):
+        if re.search(r"\b(qui suis je|qui je suis|tu me reconnais|tu (?:me )?reconnais (?:ma voix|qui)|^tu reconnais$|"
+                     r"qui parle|tu sais qui (je suis|c est))\b", t):
             return (f"Tu es{prenom}." if prenom else "Je ne reconnais pas ta voix. "
                     "Tu peux l'enregistrer avec la commande enroler."), None
         if re.search(r"\b(je vais (me coucher|dormir)|bonne nuit|a demain|je vais au lit)\b", t):

@@ -124,7 +124,8 @@ def wikipedia(question):
     Renvoie {titre, contenu, url} ou None."""
     import json
     from .knowledge import VIDES
-    vides = VIDES | {"qui", "etait", "etaient", "est", "sont", "etre", "dit", "moi", "connais", "sais"}
+    vides = VIDES | {"qui", "etait", "etaient", "est", "sont", "etre", "dit", "moi", "connais", "sais", "autre",
+                     "autres", "aussi", "encore", "plus", "chose", "choses", "truc", "trucs"}
     mots = " ".join(m for m in normaliser(question).split() if m not in vides) or question
     entete = {"User-Agent": "Orion-assistant/1.0 (assistant familial open source)"}
 
