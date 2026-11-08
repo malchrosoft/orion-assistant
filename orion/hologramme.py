@@ -252,6 +252,9 @@ class Hologramme:
         self.sur_silence = lambda: None
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="Se taire", command=lambda: self.sur_silence())
+        self.sur_mode_silencieux = lambda: None
+        menu.add_command(label="Mode silencieux (réponses écrites) / vocal",
+                         command=lambda: self.sur_mode_silencieux())
         menu.add_command(label="Panneau (voix, famille, savoir, réglages)", command=self.ouvrir_panneau)
         menu.add_separator()
         menu.add_command(label=f"Quitter {cfg['nom']}", command=self.root.destroy)

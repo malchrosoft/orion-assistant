@@ -553,6 +553,7 @@ class Panneau(Famille):
             "seuil_locuteur": tk.DoubleVar(value=c["seuil_locuteur"]),
             "transparent": tk.BooleanVar(value=c["hologramme"]["transparent"]),
             "bip_ecoute": tk.BooleanVar(value=c.get("bip_ecoute", True)),
+            "mode_silencieux": tk.BooleanVar(value=c.get("mode_silencieux", False)),
         }
         lignes = [("Nom de l'assistant", "nom"), ("Prononciation du nom (facultatif, ex. Oh-ri-on)", "nom_phonetique"),
                   ("Mots d'éveil (séparés par des virgules)", "mots_eveil"),
@@ -583,8 +584,12 @@ class Panneau(Famille):
         ttk.Label(f, text="Le terminal d'Orion affiche la ressemblance de chaque voix entendue : réglez le seuil "
                           "un peu sous celle de la famille.", foreground="#8a94a6",
                   wraplength=520).grid(row=n + 1, column=1, sticky="w")
-        ttk.Checkbutton(f, text="Bip doux quand Orion se met à écouter",
-                        variable=self.champs["bip_ecoute"]).grid(row=n + 2, column=1, sticky="w")
+        ligne_options = ttk.Frame(f)
+        ligne_options.grid(row=n + 2, column=1, sticky="w")
+        ttk.Checkbutton(ligne_options, text="Bip doux quand Orion se met à écouter",
+                        variable=self.champs["bip_ecoute"]).pack(side="left")
+        ttk.Checkbutton(ligne_options, text="Mode silencieux (réponses écrites)",
+                        variable=self.champs["mode_silencieux"]).pack(side="left", padx=12)
         ttk.Checkbutton(f, text="Hologramme transparent sans bordure",
                         variable=self.champs["transparent"]).grid(row=n + 3, column=1, sticky="w")
         ttk.Button(f, text="Enregistrer", command=self._sauver).grid(row=n + 4, column=1, sticky="e", pady=8)
@@ -719,7 +724,7 @@ class Panneau(Famille):
         self.cfg.update(nom=v["nom"].strip() or "Orion", nom_phonetique=v["nom_phonetique"].strip(),
                         aimp_exe=v["aimp_exe"],
                         dossier_musique=v["dossier_musique"], seuil_locuteur=round(v["seuil_locuteur"], 2),
-                        bip_ecoute=v["bip_ecoute"],
+                        bip_ecoute=v["bip_ecoute"], mode_silencieux=v["mode_silencieux"],
                         mots_eveil=[m.strip().lower() for m in v["mots_eveil"].split(",") if m.strip()])
         self.cfg["conversation"] = {**self.cfg.get("conversation", {}), "modele": self.conv_modele.get()}
         self.cfg["hologramme"].update(transparent=v["transparent"])

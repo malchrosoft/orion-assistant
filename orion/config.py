@@ -36,6 +36,7 @@ DEFAUT = {
     "modele_vosk": "models/vosk-model-small-fr-0.22",
     "modele_locuteur": "models/vosk-model-spk-0.4",
     "seuil_locuteur": 0.55,              # similarité cosinus minimale pour reconnaître quelqu'un
+    "mode_silencieux": False,            # vrai : Orion répond par écrit sur l'hologramme, sans parler
     "bip_ecoute": True,                  # petit carillon quand Orion se met à écouter
     "phrases_max": 2,                    # longueur maximale d'une réponse de conversation, en phrases
     "confiance_min": 0.6,                # en dessous, Orion dit « je n'ai pas bien compris » au lieu de répondre

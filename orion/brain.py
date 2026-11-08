@@ -444,6 +444,19 @@ class Cerveau(Publications, Documents):
                 "blague" in t or "rire" in t or "drole" in t or self.derniere_origine == "blague"):
             return self._blague(), None
 
+        # --- Mode silencieux : réponses écrites (sans voix), ou retour à la voix ---
+        if re.search(r"\b(mode silencieux|en silencieux|reponds? (?:moi )?par ecrit|ecris (?:moi )?au lieu de parler|"
+                     r"sans parler|ne parle plus)\b", t):
+            from .config import sauver
+            self.cfg["mode_silencieux"] = True
+            sauver(self.cfg)
+            return "Mode silencieux : je te réponds par écrit. Dis « mode vocal » pour que je reparle.", None
+        if re.search(r"\b(mode vocal|reparle|parle a nouveau|reponds? (?:moi )?a voix haute|tu peux parler)\b", t):
+            from .config import sauver
+            self.cfg["mode_silencieux"] = False
+            sauver(self.cfg)
+            return "D'accord, je te réponds de nouveau à voix haute.", None
+
         # --- Ce qu'Orion sait faire : réponse courte, ciblée selon la question ---
         if re.search(CAPACITES_TOT, t):
             reponse = self._capacites(t, generique=not t.startswith("comment"))
@@ -657,10 +670,8 @@ class Cerveau(Publications, Documents):
             return self._chercher_publications(m.group(1), t)
 
         # --- Émission vidéo du mois (vidéothèque du site de l'éditeur), ouverte à l'écran ---
-        if re.search(r"\b(broadcasting|broad casting|emission (?:du mois|mensuelle)|programme mensuel)\b", t):
-            self.derniere_origine = "bible"
-            return None, lambda: (self.actions.ouvrir_lien(VIDEOS_MENSUELLES),
-                                  "Je t'ouvre l'émission du mois dans la vidéothèque.")[1]
+        if re.search(r"\b(broadcasting|broad casting|teled\w+|emissions? (?:du mois|mensuelles?)|programme mensuel)\b", t):
+            return self._emission(t)
 
         # --- Questions bibliques : base externe, source donnée seulement sur demande ---
         self.derniere_fiche = None

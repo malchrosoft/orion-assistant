@@ -173,6 +173,13 @@ def boucle_vocale(cfg, holo):
     oreille, bouche = Oreille(cfg), Bouche(cfg)
     profils, cerveau = Profils(cfg["seuil_locuteur"]), Cerveau(cfg, Actions(cfg))
     holo.sur_silence = bouche.interrompre  # clic droit → « Se taire »
+
+    def basculer_silence():  # clic droit → « Mode silencieux » : réponses écrites, sans voix
+        cfg["mode_silencieux"] = not cfg.get("mode_silencieux")
+        sauver(cfg)
+        holo.derniere_action(f"{time.strftime('%H:%M')} · mode " + ("silencieux : réponses écrites"
+                                                                    if cfg["mode_silencieux"] else "vocal"))
+    holo.sur_mode_silencieux = basculer_silence
     holo.source_niveau = lambda: oreille.niveau  # l'anneau ondule avec le son du micro
     clics = {"en_attente": False, "recents": [], "deplace": False, "derniere_remarque": 0.0}
     holo.sur_clic = lambda: clics.update(en_attente=True)  # un clic sur l'hologramme vaut « dis Orion »
@@ -191,7 +198,8 @@ def boucle_vocale(cfg, holo):
         etape = re.sub(r"\s*:?\s*\d+\s*%.*$", "", message)
         palier = int(fraction * 4) if fraction is not None else -1
         maintenant = time.time()
-        if etape != annonces["etape"] or (palier > annonces["palier"] and maintenant - annonces["quand"] > 15):
+        if not cfg.get("mode_silencieux") and (etape != annonces["etape"] or (
+                palier > annonces["palier"] and maintenant - annonces["quand"] > 15)):  # silencieux : affiché seulement
             annonces.update(etape=etape, palier=palier, quand=maintenant)
             bouche.dire(etape if fraction is None else f"{etape} : {int(fraction * 100)} pour cent.")  # sans écoute de l'interruption : phrase courte, la tâche continue après
     cerveau.signaler = signaler_tache
@@ -217,7 +225,11 @@ def boucle_vocale(cfg, holo):
         fini = threading.Event()
         clics["en_attente"] = False
         oreille.muet = True
-        threading.Thread(target=lambda: (bouche.dire(texte), fini.set()), daemon=True).start()
+        if cfg.get("mode_silencieux"):  # réponse écrite seulement : le texte défile le temps de le lire
+            print(f"[écrit] {texte}", flush=True)
+            threading.Timer(1.5 + len(texte) / 14.5, fini.set).start()
+        else:
+            threading.Thread(target=lambda: (bouche.dire(texte), fini.set()), daemon=True).start()
         interrompu = False
         while not fini.wait(0.05):
             if clics["en_attente"]:  # clic pendant qu'il parle : il se tait et écoute
@@ -443,7 +455,7 @@ def boucle_vocale(cfg, holo):
             if _date_config() != config_vue["date"]:  # réglages modifiés dans le panneau : appliqués tout de suite
                 recharger()
             eveille = time.time() < eveil_jusqua
-            if eveille and not etait_eveille and cfg.get("bip_ecoute", True):
+            if eveille and not etait_eveille and cfg.get("bip_ecoute", True) and not cfg.get("mode_silencieux"):
                 oreille.muet = True  # le bip ne doit pas être transcrit
                 bip()  # prêt à écouter (après avoir fini de parler) : signal sonore, sans regarder l'écran
                 time.sleep(0.1)
