@@ -109,6 +109,7 @@ def enroler(cfg, nom):
     print(f"Voix de {nom} enregistrée.")
 
 
+SALUER_APRES_S = 600  # silence au-delà duquel Orion salue de nouveau la personne qu'il reconnaît
 STOP = r"\b(stop|tais toi|taisez vous|chut|silence|arrete|ca suffit|attends|stoppe)\b"
 
 
@@ -447,6 +448,7 @@ def boucle_vocale(cfg, holo):
     eveil_jusqua = 0.0
     dernier_locuteur = None
     dernier_reconnu = None  # dernière personne reconnue à sa voix pendant cette session
+    reconnu_a = 0.0         # quand on l'a entendue pour la dernière fois
     voix_precedente = {}    # empreinte et hauteur de la dernière phrase longue (pour une correction)
     formule = f"dis-moi {cfg['nom']}"
     etait_eveille = False
@@ -462,8 +464,10 @@ def boucle_vocale(cfg, holo):
                 reprendre_micro()
             if not eveille:
                 holo.interlocuteur("")  # conversation terminée : la prochaine voix est réidentifiée
-                dernier_reconnu = None
+                if time.time() - reconnu_a > SALUER_APRES_S:  # mais on ne resalue pas qui vient de parler
+                    dernier_reconnu = None
             etait_eveille = eveille
+            holo.fin_ecoute = eveil_jusqua if eveille else 0.0  # décompte affiché en bas à gauche
             holo.changer("ecoute" if eveille else "veille", "Je t'écoute…" if eveille else f"« {formule} »")
             texte, empreinte = ecouter(eveille)
             if texte is None:  # clic sur l'hologramme : comme « dis Orion »… sauf si l'on s'acharne
@@ -540,7 +544,7 @@ def boucle_vocale(cfg, holo):
             # première fois qu'on l'entend, ou quelqu'un d'autre prend la parole : Orion montre qu'il l'a reconnu
             nouveau = locuteur != "invité" and locuteur != dernier_reconnu
             if locuteur != "invité":
-                dernier_reconnu = locuteur
+                dernier_reconnu, reconnu_a = locuteur, time.time()
             holo.interlocuteur("" if locuteur == "invité" else locuteur, personnes.couleur(locuteur))
             if nomme and not sans_nom.strip():  # « dis Orion » seul : couleur d'écoute, puis on attend la demande
                 holo.changer("ecoute", "Je t'écoute…")
@@ -584,11 +588,12 @@ def boucle_vocale(cfg, holo):
                 cerveau.a_recharger = False
                 recharger()
             if nouveau and reponse and not normaliser(reponse).startswith(normaliser(locuteur)):
-                reponse = f"{random.choice(['Ah', 'Bonjour', 'Tiens'])} {locuteur}. {reponse}"
+                salut = f"{random.choice(['Ah', 'Bonjour', 'Tiens'])} {locuteur}."
+                reponse = f"{salut}\n\n{reponse}" if reponse.startswith("#") else f"{salut} {reponse}"
             print(f"[{cfg['nom']}] {reponse}", flush=True)
             if locuteur != "invité":  # couleur éventuellement choisie à l'instant
                 holo.interlocuteur(locuteur, personnes.couleur(locuteur))
-            coupe = dire(reponse) is False
+            dire(reponse)
             while cerveau.notes_a_jouer:  # bip de départ d'un minuteur, à sa hauteur, micro coupé
                 oreille.muet = True
                 bip(0.18, cerveau.notes_a_jouer.pop(0))
@@ -597,11 +602,8 @@ def boucle_vocale(cfg, holo):
             if cerveau.demande_enrolement:
                 enregistrer_voix(cerveau.demande_enrolement, cerveau.completer_voix)
                 cerveau.demande_enrolement, cerveau.completer_voix = None, False
-            # reste à l'écoute seulement si Orion attend une réponse (question posée), sinon se rendort
-            attend = (reponse or "").rstrip().endswith("?") or cerveau.en_attente or cerveau.ville_demandee is not None or cerveau.question_tutoiement \
-                or cerveau.oubli_a_confirmer or cerveau.retrait_voix
-            # interrompu en pleine phrase : on reste à l'écoute de ce qui suit
-            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"] if attend or coupe else 0.0
+            # toujours à l'écoute un moment après avoir parlé : la suite (relance, précision) vient sans le nom
+            eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]
         except Exception as erreur:  # jamais bloqué : Orion se remet seul et reprend l'écoute
             se_remettre(erreur)
             eveil_jusqua = time.time() + cfg["fenetre_conversation_s"]

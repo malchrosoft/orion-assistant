@@ -31,7 +31,7 @@ DONNEES.mkdir(parents=True, exist_ok=True)
 DEFAUT = {
     "nom": "Orion",                      # nom de l'assistant = mot d'éveil
     "mots_eveil": ["orion"],             # variantes acceptées (minuscules, sans accents)
-    "fenetre_conversation_s": 8,         # quand Orion vient de poser une question, on peut répondre sans le nom
+    "fenetre_conversation_s": 15,        # après chaque réponse, on peut enchaîner sans redire le nom
     "formules_eveil": ["hey", "he", "eh", "et", "dis", "dit", "di", "j", "ok"],  # « hey Orion », « dis Orion » (+ transcriptions)
     "modele_vosk": "models/vosk-model-small-fr-0.22",
     "modele_locuteur": "models/vosk-model-spk-0.4",

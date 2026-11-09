@@ -21,6 +21,8 @@ import sys
 import time
 import tkinter as tk
 
+from .texte import PAUSES
+
 COULEURS = {  # (points, halo) — les transitions sont fondues
     "veille": ("#d6dbe1", "#2c3036"),     # au repos : gris perle
     "ecoute": ("#4ff4ff", "#0c3f9a"),     # écoute : cyan sur halo bleu
@@ -33,6 +35,7 @@ POLICE_LECTURE = ("Helvetica", 11)
 POLICE_TITRE = ("Helvetica", 12, "bold")
 LIGNES_LECTURE = 4
 CARACTERES_PAR_SECONDE = 14.5  # débit moyen des voix françaises (Piper et système), pour suivre la lecture
+PARAGRAPHE = (PAUSES["paragraphe"] - PAUSES["ligne"]) * CARACTERES_PAR_SECONDE  # pause en plus d'une fin de ligne
 DELAI_VOIX = 0.6               # temps de synthèse avant que la voix ne démarre
 LARGEUR_CAR = {11: 8.2, 9: 6.8}  # largeur approchée d'un caractère Consolas (pixels), par taille de police
 CHAUD = "#ffd8a0"
@@ -224,6 +227,8 @@ class Hologramme:
         # Personne reconnue pendant la conversation : en haut à gauche
         self.personne_texte, self.couleur_personne = "", None
         self.personne = c.create_text(8, 10, text="", anchor="w", fill="#ffffff", font=("Consolas", 9))
+        self.fin_ecoute = 0.0  # fin de l'écoute sans le nom (time.time()), décomptée en bas à gauche
+        self.attente = c.create_text(8, s + 62, text="", anchor="w", fill="#ffffff", font=("Consolas", 9))
         self.action = c.create_text(s / 2, 26, text="", fill="#ffffff", font=("Consolas", 9))
         self.chiffres_decompte = [c.create_text(s / 2, s * 0.86, text="", fill=FOND, state="hidden",
                                                 font=("Helvetica", 44, "bold")) for _ in range(2)]
@@ -503,7 +508,7 @@ class Hologramme:
                             fill=couleur, state="normal")
 
     def _couper(self, texte):
-        """Texte façon Markdown → [(ligne, police)] tenant dans la fenêtre : titres « # » en gras, une ligne
+        """Texte façon Markdown → [(ligne, police, pause dite après, en caractères)] tenant dans la fenêtre : titres « # » en gras, une ligne
         vide entre paragraphes, puces « - » en « • » avec retrait, chaque ligne du texte (calcul) gardée."""
         largeur = self.taille * 0.86
         try:
@@ -516,25 +521,25 @@ class Hologramme:
             brute = brute.strip()
             if not brute:
                 if lignes and lignes[-1][0]:
-                    lignes.append(("", POLICE_LECTURE))
+                    lignes.append(("", POLICE_LECTURE, PARAGRAPHE))
                 continue
             titre = re.match(r"#{1,6}\s+(.*)", brute)
             police = POLICE_TITRE if titre else POLICE_LECTURE
             if titre:
                 brute = titre.group(1)
                 if lignes and lignes[-1][0]:
-                    lignes.append(("", POLICE_LECTURE))
+                    lignes.append(("", POLICE_LECTURE, PARAGRAPHE))
             puce = re.match(r"[-*•]\s+(.*)", brute)
             brute, retrait = (f"• {puce.group(1)}", "   ") if puce else (brute, "")
             ligne = ""
             for mot in brute.split():
                 essai = f"{ligne} {mot}" if ligne else mot
                 if ligne and mesures[police](essai) > largeur:
-                    lignes.append((ligne, police))
+                    lignes.append((ligne, police, 0))
                     ligne = retrait + mot
                 else:
                     ligne = essai
-            lignes.append((ligne, police))
+            lignes.append((ligne, police, PAUSES["titre" if titre else "ligne"] * CARACTERES_PAR_SECONDE))
         while lignes and not lignes[-1][0]:
             lignes.pop()
         return lignes
@@ -554,11 +559,12 @@ class Hologramme:
         lignes = self._lignes
         lus = max(0.0, (time.monotonic() - self._t_lecture - DELAI_VOIX) * CARACTERES_PAR_SECONDE)
         position, reste = 0.0, lus  # ligne en cours de lecture (avec la fraction déjà lue)
-        for i, (ligne, _) in enumerate(lignes):
-            if reste <= len(ligne) + 1:
-                position = i + reste / (len(ligne) + 1)
+        for i, (ligne, _, pause) in enumerate(lignes):
+            poids = len(ligne) + 1 + pause  # la pause de la voix après la ligne, comptée en caractères
+            if reste <= poids:
+                position = i + min(1.0, reste / (len(ligne) + 1))
                 break
-            reste -= len(ligne) + 1
+            reste -= poids
         else:
             position = len(lignes) - 1
         haut = max(0.0, min(position - 1, len(lignes) - LIGNES_LECTURE)) if len(lignes) > LIGNES_LECTURE else 0.0
@@ -805,6 +811,9 @@ class Hologramme:
         c.itemconfigure(self.texte, text="" if self.lecture else texte, fill=melange(self.coeur, "#ffffff", 0.2))
         self._afficher_lecture()
 
+        reste = self.fin_ecoute - time.time()
+        c.itemconfigure(self.attente, text=f"{math.ceil(reste)} s" if self.etat == "ecoute" and reste > 0 else "",
+                        fill=melange(FOND, self.coeur, 0.7))
         c.itemconfigure(self.personne, text=self.personne_texte,
                         fill=self.couleur_personne or melange(FOND, self.coeur, 0.8))
         c.itemconfigure(self.action, text=self._defiler(self.action_texte, 9, self._t_action),
