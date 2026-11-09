@@ -93,6 +93,37 @@ def calculer(t):
     return str(int(r) if r == int(r) else r).replace(".", ",")
 
 
+PREMIERS_MAX = 10_000
+
+
+def bornes_premiers(t):
+    """« nombres premiers de 1 a 100 », « entre 20 40 », « jusqu a mille », « de 100 » → (debut, fin), sinon None.
+    `t` : phrase normalisée, nombres en chiffres."""
+    if not re.search(r"\bnombres? premiers?\b", t):
+        return None
+    t = re.sub(r"\bmille\b", "1000", t)
+    m = (re.search(r"\b(?:de|entre|depuis) (\d+) (?:a |et |jusqu a )?(\d+)\b", t)
+         or re.search(r"\b(?:jusqu a|inferieurs? a|en dessous de|avant|sous|de) (\d+)\b", t))
+    if not m:
+        return None
+    debut, fin = (int(m[1]), int(m[2])) if m.lastindex == 2 else (1, int(m[1]))
+    return min(debut, fin), max(debut, fin)
+
+
+def nombres_premiers(debut, fin):
+    """Liste mise en forme (dix nombres par ligne), calculée : un petit modèle se trompe sur ce genre de liste."""
+    crible = bytearray([1]) * (fin + 1)
+    crible[:2] = b"\0\0"
+    for n in range(2, int(fin ** 0.5) + 1):
+        if crible[n]:
+            crible[n * n::n] = bytes(len(range(n * n, fin + 1, n)))
+    premiers = [n for n in range(debut, fin + 1) if crible[n]]
+    if not premiers:
+        return f"Il n'y a aucun nombre premier entre {debut} et {fin}."
+    lignes = [", ".join(map(str, premiers[i:i + 10])) for i in range(0, len(premiers), 10)]
+    return (f"# Nombres premiers de {debut} à {fin}\n\nIl y en a {len(premiers)} :\n\n" + "\n".join(lignes))
+
+
 class Cerveau(Publications, Documents):
     def __init__(self, cfg, actions):
         self.cfg, self.actions = cfg, actions
@@ -402,6 +433,8 @@ class Cerveau(Publications, Documents):
         t = normaliser(phrase)
         for mot in self.cfg["mots_eveil"]:
             t = re.sub(rf"^(ok |dis |hey |salut )?{mot}\b[ ,]*", "", t)
+        # « nombres premiers » souvent compris « (noms) mon premier » quand une plage suit
+        t = re.sub(r"\b(?:(?:des |les )?noms? )?mon premiers?\b(?= (?:de|d|entre|jusqu|inferieur))", "nombres premiers", t)
         prenom = "" if locuteur == "invité" else f" {locuteur}"
         a = self.actions
 
@@ -531,6 +564,15 @@ class Cerveau(Publications, Documents):
                 return "Voilà la liste complète des crédits, en PDF."
             return None, generer
         cle = dossiers.trouver(self.cfg, t) if re.search(r"\b(dans|vers)\b", t) else None
+        if bornes := bornes_premiers(chiffres(t)):
+            if bornes[1] > PREMIERS_MAX:
+                return f"Je m'arrête à {PREMIERS_MAX} : au-delà, la liste serait trop longue à lire.", None
+            texte = nombres_premiers(*bornes)
+            if re.search(r"\b(document|fichier|word|docx|markdown|html|page web|pdf)\b", t):
+                self.derniere_reponse = {"question": f"Nombres premiers de {bornes[0]} à {bornes[1]}",
+                                         "contenu": texte, "sources": []}
+                return self._exporter(export.format_demande(t), cle)
+            return texte, None
         t_sujet = re.sub(rf"\s+(?:dans|vers) (?:le dossier |mon dossier |mes )?{normaliser(cle)}\b", "", t) if cle else t
         # document tiré de la réponse précédente : « fais-en un document Word », « exporte ça en HTML »
         if re.search(r"\b(fais|fait|genere|cree|exporte|enregistre|mets|transforme|prepare)\b", t) and re.search(
