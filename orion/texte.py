@@ -158,6 +158,29 @@ def epeler_format(ext):
     return (prononce.lower() + (" " + lettres if lettres else "")).strip() if prononce else lettres
 
 
+PAUSES = {"titre": 0.55, "ligne": 0.3, "paragraphe": 0.6}  # secondes de silence après chaque morceau
+
+
+def segments_oraux(texte):
+    """Markdown → [(phrase, pause)] : un titre, une ligne (calcul, puce) ou un paragraphe par phrase dite, suivi
+    d'un silence dosé, pour une lecture posée qui suit la mise en forme de l'écran."""
+    segments = []
+    for ligne in texte.splitlines():
+        if not ligne.strip():
+            if segments:
+                segments[-1] = (segments[-1][0], max(segments[-1][1], PAUSES["paragraphe"]))
+            continue
+        titre = re.match(r"\s*#{1,6}\s+", ligne)
+        ligne = re.sub(r"^\s*(?:#{1,6}\s+|[-*•]\s+|\d+[.)]\s+(?=\D))", "", ligne)  # titre, puce, numéro
+        ligne = re.sub(r"[*_`]+", "", ligne).strip()
+        if ligne:
+            segments.append((ligne if ligne[-1] in ".!?…:;," else ligne + ".",
+                             PAUSES["titre" if titre else "ligne"]))
+    if segments:
+        segments[-1] = (segments[-1][0], 0.0)
+    return segments
+
+
 def pour_la_voix(texte, langue="fr"):
     """Texte prêt à être dit : noms de fichiers et sigles de formats lus comme on les prononce."""
     point = POINT.get(langue, POINT["en"])

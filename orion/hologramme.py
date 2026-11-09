@@ -30,6 +30,7 @@ COULEURS = {  # (points, halo) — les transitions sont fondues
 }
 ROUGE_PAROLE = "#ff5a3c"
 POLICE_LECTURE = ("Helvetica", 11)
+POLICE_TITRE = ("Helvetica", 12, "bold")
 LIGNES_LECTURE = 4
 CARACTERES_PAR_SECONDE = 14.5  # débit moyen des voix françaises (Piper et système), pour suivre la lecture
 DELAI_VOIX = 0.6               # temps de synthèse avant que la voix ne démarre
@@ -502,22 +503,41 @@ class Hologramme:
                             fill=couleur, state="normal")
 
     def _couper(self, texte):
-        """Lignes qui tiennent dans la largeur de la fenêtre (mesurées avec la vraie police si possible)."""
+        """Texte façon Markdown → [(ligne, police)] tenant dans la fenêtre : titres « # » en gras, une ligne
+        vide entre paragraphes, puces « - » en « • » avec retrait, chaque ligne du texte (calcul) gardée."""
         largeur = self.taille * 0.86
         try:
             import tkinter.font as tkfont
-            mesure = tkfont.Font(font=POLICE_LECTURE).measure
+            mesures = {p: tkfont.Font(font=p).measure for p in (POLICE_LECTURE, POLICE_TITRE)}
         except Exception:
-            mesure = lambda m: len(m) * 6.5  # noqa: E731 — sans fenêtre (tests)
-        lignes, ligne = [], ""
-        for mot in texte.split():
-            essai = f"{ligne} {mot}".strip()
-            if ligne and mesure(essai) > largeur:
-                lignes.append(ligne)
-                ligne = mot
-            else:
-                ligne = essai
-        return lignes + ([ligne] if ligne else [])
+            mesures = dict.fromkeys((POLICE_LECTURE, POLICE_TITRE), lambda m: len(m) * 6.5)  # sans fenêtre (tests)
+        lignes = []
+        for brute in re.sub(r"\*\*|__", "", texte).splitlines():
+            brute = brute.strip()
+            if not brute:
+                if lignes and lignes[-1][0]:
+                    lignes.append(("", POLICE_LECTURE))
+                continue
+            titre = re.match(r"#{1,6}\s+(.*)", brute)
+            police = POLICE_TITRE if titre else POLICE_LECTURE
+            if titre:
+                brute = titre.group(1)
+                if lignes and lignes[-1][0]:
+                    lignes.append(("", POLICE_LECTURE))
+            puce = re.match(r"[-*•]\s+(.*)", brute)
+            brute, retrait = (f"• {puce.group(1)}", "   ") if puce else (brute, "")
+            ligne = ""
+            for mot in brute.split():
+                essai = f"{ligne} {mot}" if ligne else mot
+                if ligne and mesures[police](essai) > largeur:
+                    lignes.append((ligne, police))
+                    ligne = retrait + mot
+                else:
+                    ligne = essai
+            lignes.append((ligne, police))
+        while lignes and not lignes[-1][0]:
+            lignes.pop()
+        return lignes
 
     def _afficher_lecture(self):
         """4 lignes centrées en bas : la ligne lue en clair, les suivantes plus douces ; le bloc remonte en
@@ -534,7 +554,7 @@ class Hologramme:
         lignes = self._lignes
         lus = max(0.0, (time.monotonic() - self._t_lecture - DELAI_VOIX) * CARACTERES_PAR_SECONDE)
         position, reste = 0.0, lus  # ligne en cours de lecture (avec la fraction déjà lue)
-        for i, ligne in enumerate(lignes):
+        for i, (ligne, _) in enumerate(lignes):
             if reste <= len(ligne) + 1:
                 position = i + reste / (len(ligne) + 1)
                 break
@@ -554,7 +574,7 @@ class Hologramme:
             proche = max(0.0, 1 - abs(i + 0.5 - position) / 1.5)  # la ligne lue ressort
             teinte = melange(FOND, melange(self.coeur, "#ffffff", 0.3), (0.35 + 0.65 * proche) * max(0.0, bord))
             c.coords(item, s / 2, y)
-            c.itemconfigure(item, text=lignes[i], fill=teinte, state="normal")
+            c.itemconfigure(item, text=lignes[i][0], font=lignes[i][1], fill=teinte, state="normal")
 
     def _defiler(self, texte, taille_police, depart=0.0):
         """Texte trop long pour la fenêtre : il défile en boucle, comme un bandeau (pause au début)."""

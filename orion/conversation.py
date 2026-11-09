@@ -219,8 +219,9 @@ class Conversation:
                       "une assistante vocale familiale", "un assistant vocal familial")
         lignes = [
             f"Tu es {nom}, {role}, sur un ordinateur de la maison. Tu parles français.",
-            "Tes réponses sont dites à voix haute : une ou deux phrases courtes, simples et directes, sans "
-            "liste, sans mise en forme, sans émoji, sans parenthèses. Pas d'emphase, de lyrisme ni de formule "
+            "Tes réponses sont dites à voix haute et affichées : une ou deux phrases courtes, simples et directes, "
+            "sans émoji ni parenthèses. Pour un calcul, une liste ou des étapes seulement, écris en Markdown court : "
+            "un titre « # … », puis une ligne par étape de calcul ou par élément. Pas d'emphase, de lyrisme ni de formule "
             "creuse (« Ah, », « Bien sûr ! », « Excellente question »).",
             "Tu peux discuter de tout, avec bienveillance et humour léger, en adaptant ton vocabulaire à "
             "l'interlocuteur. Pour un fait précis (date, chiffre, science, santé, droit), dis que tu peux vérifier "
@@ -299,7 +300,7 @@ class Conversation:
             return None
         messages = ([{"role": "system", "content": self._systeme(locuteur)}] + self.EXEMPLES
                     + self.historiques.get(locuteur, []) + [{"role": "user", "content": phrase}])
-        corps = json.dumps({"messages": messages, "max_tokens": 90, "temperature": 0.5,
+        corps = json.dumps({"messages": messages, "max_tokens": 220, "temperature": 0.5,
                             "chat_template_kwargs": {"enable_thinking": False}}).encode()
         try:
             req = urllib.request.Request(adresse + "/v1/chat/completions", corps,
@@ -309,14 +310,15 @@ class Conversation:
         except Exception:
             return None
         texte = re.sub(r"<think>.*?</think>", "", texte, flags=re.S).strip()  # Qwen3 : pas de réflexion lue
-        texte = re.sub(r"[*_#`]+", "", texte)                                  # pas de mise en forme à l'oral
-        texte = re.sub(r"\s*\([^)]*\)?", "", texte)                          # ni parenthèses (même non fermées)
-        texte = re.sub(r"\s+", " ", texte).strip()                              # pas de retours à la ligne
+        texte = re.sub(r"[_`]+", "", texte)               # Markdown gardé pour l'affichage (la voix le retire)
+        texte = re.sub(r"[ \t]*\([^)\n]*\)?", "", texte)   # ni parenthèses (même non fermées)
+        texte = re.sub(r"\n\s*\n+", "\n\n", re.sub(r"[ \t]+", " ", texte)).strip()  # lignes et paragraphes gardés
         texte = re.sub(r"^(?:(?:ah|oh|eh bien|bien sûr|absolument|excellente question|quelle (?:belle|bonne) "
                        r"question|bonne question)\s*[,!.…]+\s*)+", "", texte, flags=re.I)  # débuts creux
         texte = texte[:1].upper() + texte[1:]
-        phrases = re.split(r"(?<=[.!?…])\s+", texte)
-        texte = " ".join(phrases[:self.cfg.get("phrases_max", 2)])               # réponse brève à l'oral
+        if "\n" not in texte:  # réponse en prose : brève à l'oral ; réponse mise en forme : gardée entière
+            phrases = re.split(r"(?<=[.!?…])\s+", texte)
+            texte = " ".join(phrases[:self.cfg.get("phrases_max", 2)])
         if texte:
             self._noter(locuteur, phrase, texte)
         return texte or None

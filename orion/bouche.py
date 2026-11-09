@@ -11,7 +11,7 @@ import multiprocessing
 import re
 import threading
 
-from .texte import pour_la_voix
+from .texte import pour_la_voix, segments_oraux
 
 LANGUES = {"fr": "français", "en": "anglais", "es": "espagnol", "de": "allemand", "it": "italien",
            "pt": "portugais", "nl": "néerlandais", "ar": "arabe", "pl": "polonais", "tr": "turc",
@@ -122,35 +122,60 @@ def _reechantillonner(echantillons, source, cible):
     return sortie
 
 
-def _dire_piper(ordre):
-    """Voix naturelle : sherpa-onnx écrit un WAV temporaire, joué aussitôt puis supprimé."""
+def _synthetiser(ordre, texte, native):
+    """Phrase → échantillons int16 à la fréquence de la carte son, silences du début et de la fin retirés
+    (les pauses entre phrases sont alors exactement celles voulues : ni rebond ni précipitation)."""
     import os
     import subprocess
     import sys
     import tempfile
     import wave
-    import sounddevice as sd
     from . import piper
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     descripteur, chemin = tempfile.mkstemp(suffix=".wav")
     os.close(descripteur)
     try:
-        resultat = subprocess.run(piper.commande(ordre["piper"], chemin, ordre["texte"]), capture_output=True,
-                                  **options)
+        resultat = subprocess.run(piper.commande(ordre["piper"], chemin, texte), capture_output=True, **options)
         if resultat.returncode != 0:
             raise RuntimeError(resultat.stderr.decode("utf-8", "replace").strip()[-300:])
         with wave.open(chemin) as w:
-            frequence, son = w.getframerate(), w.readframes(w.getnframes())
-            largeur = w.getsampwidth()
-        echantillons = _vers_int16(son, largeur)
-        # macOS (CoreAudio) refuse souvent une fréquence autre que celle de la carte son : on convertit
-        native = int(sd.query_devices(kind="output")["default_samplerate"])
-        if native != frequence:
-            echantillons = _reechantillonner(echantillons, frequence, native)
-        with sd.RawOutputStream(samplerate=native, channels=1, dtype="int16") as f:
-            f.write(echantillons.tobytes())
+            frequence, son, largeur = w.getframerate(), w.readframes(w.getnframes()), w.getsampwidth()
     finally:
         os.unlink(chemin)
+    echantillons = _vers_int16(son, largeur)
+    # macOS (CoreAudio) refuse souvent une fréquence autre que celle de la carte son : on convertit
+    if native != frequence:
+        echantillons = _reechantillonner(echantillons, frequence, native)
+    fort = [i for i, v in enumerate(echantillons) if abs(v) > 400]
+    if fort:  # on garde 40 ms autour de la voix pour ne pas couper l'attaque ni la chute
+        marge = int(native * 0.04)
+        echantillons = echantillons[max(0, fort[0] - marge):fort[-1] + marge]
+    return echantillons
+
+
+def _dire_piper(ordre):
+    """Voix naturelle : chaque morceau (titre, ligne, paragraphe) est synthétisé pendant que le précédent est
+    joué, dans un seul flux audio continu, avec un silence dosé entre les morceaux."""
+    import queue
+    import threading
+    import sounddevice as sd
+    native = int(sd.query_devices(kind="output")["default_samplerate"])
+    prets = queue.Queue(maxsize=2)
+
+    def preparer():
+        try:
+            for texte, pause in ordre["segments"]:
+                prets.put((_synthetiser(ordre, texte, native), pause))
+            prets.put(None)
+        except Exception as e:
+            prets.put(e)
+    threading.Thread(target=preparer, daemon=True).start()
+    with sd.RawOutputStream(samplerate=native, channels=1, dtype="int16") as f:
+        while (morceau := prets.get()) is not None:
+            if isinstance(morceau, Exception):
+                raise morceau
+            echantillons, pause = morceau
+            f.write(echantillons.tobytes() + bytes(2 * int(native * pause)))
 
 
 def worker(entree, sortie):
@@ -172,7 +197,8 @@ def worker(entree, sortie):
         if ordre.get("voix"):
             moteur.setProperty("voice", ordre["voix"])
         moteur.setProperty("rate", ordre.get("vitesse", 175))
-        moteur.say(ordre["texte"])
+        for texte, _ in ordre["segments"]:  # voix du système : elle marque d'elle-même la fin des phrases
+            moteur.say(texte)
         moteur.runAndWait()
         sortie.put("fini")
 
@@ -213,10 +239,11 @@ class Bouche:
 
     def dire(self, texte):
         """Bloque jusqu'à la fin de la phrase ou jusqu'à interrompre(). Renvoie False si interrompu."""
-        texte = pour_la_voix(self.prononcer(texte), self.cfg.get("langue", "fr"))  # « .pdf » → « point P D F »
+        langue = self.cfg.get("langue", "fr")  # « .pdf » → « point P D F »
+        segments = [(pour_la_voix(self.prononcer(phrase), langue), pause) for phrase, pause in segments_oraux(texte)]
         with self.verrou:
             proc, entree, sortie = self.proc, self.entree, self.sortie
-        entree.put({"texte": texte, "voix": self.voix, "vitesse": self.cfg["voix_vitesse"], "piper": self.piper})
+        entree.put({"segments": segments, "voix": self.voix, "vitesse": self.cfg["voix_vitesse"], "piper": self.piper})
         signaler_parole(True)  # le panneau (autre programme) parle aussi : l'écoute d'Orion doit l'ignorer
         try:
             while proc.is_alive():  # interrompre() tue le processus : on rend la main aussitôt
