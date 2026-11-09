@@ -259,8 +259,14 @@ class Hologramme:
         menu.add_command(label="Panneau (voix, famille, savoir, réglages)", command=self.ouvrir_panneau)
         menu.add_separator()
         menu.add_command(label=f"Quitter {cfg['nom']}", command=self.quitter)
-        c.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
-        c.bind("<Button-2>", lambda e: menu.tk_popup(e.x_root, e.y_root))  # macOS
+
+        def ouvrir_menu(e):
+            try:
+                menu.tk_popup(e.x_root, e.y_root)
+            except tk.TclError:  # « Quitter » choisi : la fenêtre est détruite avant que tk_popup ne rende la main
+                pass
+        c.bind("<Button-3>", ouvrir_menu)
+        c.bind("<Button-2>", ouvrir_menu)  # macOS
         c.bind("<Double-Button-1>", self._double_clic)
         icone(self.root)
         self._ecran_chargement()
