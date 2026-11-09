@@ -54,7 +54,7 @@ _MOTS_VIDES = {"de", "du", "des", "pour", "le", "la", "les", "l", "un", "une", "
 def nom(t):
     """Nom donné au minuteur : « minuteur des pâtes de 10 minutes », « 5 minutes pour le gâteau »,
     « minuteur appelé lessive » → « pâtes », « gâteau », « lessive » ; chaîne vide sinon."""
-    m = (re.search(r"(?:appele|appelle|nomme|qui s appelle)\s+(\w[\w ]*?)(?=\s+(?:de|pour|dans)\b|\s*\d|$)", t)
+    m = (re.search(r"\b(?:appele|appelle|nomme|qui s appelle)\s+(\w[\w ]*?)(?=\s+(?:de|pour|dans)\b|\s*\d|$)", t)
          or re.search(r"\bpour (?:le |la |les |l |mon |ma |mes )?([a-z][a-z ]*?)\s*$", t)
          or re.search(r"\b(?:minuteur|minuterie|compte a rebours|decompte|chrono|timer)\s+"
                       r"(?:du |de la |des |de l |de |pour )?([a-z][a-z ]*?)(?=\s+(?:de|pour|dans)\s+\d|\s+\d|$)", t))
