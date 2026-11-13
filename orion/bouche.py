@@ -44,26 +44,51 @@ def parole_recente(marge=1.5):
         return False
 
 
+def _sortie_son():
+    """sounddevice, relancé pour suivre la sortie choisie dans le système (casque branché, écran, enceinte…) :
+    PortAudio fige la liste des périphériques et celui par défaut à son démarrage. À n'appeler que dans un
+    processus sans flux ouvert : relancer PortAudio couperait le micro du programme principal."""
+    import sounddevice as sd
+    sd._terminate()
+    sd._initialize()
+    return sd
+
+
+def _jouer_bip(volume, note):
+    import array, math
+    sd = _sortie_son()
+    taux = int(sd.query_devices(kind="output")["default_samplerate"])
+    sons = array.array("h")
+    for frequence, duree in (((note, 0.22),) if note else ((660, 0.09), (880, 0.14))):
+        n = int(taux * duree)
+        for i in range(n):  # attaque et extinction en douceur, sans clic
+            enveloppe = min(1.0, i / (0.01 * taux)) * math.exp(-4 * i / n)
+            sons.append(int(32767 * volume * enveloppe * math.sin(2 * math.pi * frequence * i / taux)))
+    with sd.RawOutputStream(samplerate=taux, channels=1, dtype="int16") as f:
+        f.write(sons.tobytes())
+
+
+def _worker_bips(file):
+    """Boucle du processus des bips : à part, pour suivre la sortie du système sans toucher au micro."""
+    while True:
+        try:
+            _jouer_bip(*file.get())
+        except Exception:
+            pass  # pas de sortie son : le changement de couleur suffit
+
+
+_bips = None
+
+
 def bip(volume=0.12, note=None):
     """Petit carillon doux (deux notes montantes) : Orion est prêt à écouter, sans regarder l'écran. Avec
     `note` (Hz) : un seul bip à cette hauteur (celle d'un minuteur, pour le reconnaître à l'oreille).
     Synthétisé à la volée : pas de fichier son à livrer, ni de décodeur, ni de licence."""
-    def jouer():
-        import array, math
-        try:
-            import sounddevice as sd
-            taux = int(sd.query_devices(kind="output")["default_samplerate"])
-            sons = array.array("h")
-            for frequence, duree in (((note, 0.22),) if note else ((660, 0.09), (880, 0.14))):
-                n = int(taux * duree)
-                for i in range(n):  # attaque et extinction en douceur, sans clic
-                    enveloppe = min(1.0, i / (0.01 * taux)) * math.exp(-4 * i / n)
-                    sons.append(int(32767 * volume * enveloppe * math.sin(2 * math.pi * frequence * i / taux)))
-            with sd.RawOutputStream(samplerate=taux, channels=1, dtype="int16") as f:
-                f.write(sons.tobytes())
-        except Exception:
-            pass  # pas de sortie son : le changement de couleur suffit
-    threading.Thread(target=jouer, daemon=True).start()
+    global _bips
+    if _bips is None:
+        _bips = multiprocessing.Queue()
+        multiprocessing.Process(target=_worker_bips, args=(_bips,), daemon=True).start()
+    _bips.put((volume, note))
 
 
 def lister_voix():
@@ -158,7 +183,7 @@ def _dire_piper(ordre):
     joué, dans un seul flux audio continu, avec un silence dosé entre les morceaux."""
     import queue
     import threading
-    import sounddevice as sd
+    sd = _sortie_son()
     native = int(sd.query_devices(kind="output")["default_samplerate"])
     prets = queue.Queue(maxsize=2)
 
