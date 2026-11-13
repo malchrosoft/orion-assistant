@@ -5,6 +5,7 @@ import array
 import json
 import math
 import queue
+import threading
 
 from .config import DONNEES, UTILISATEUR
 
@@ -208,10 +209,10 @@ class Oreille:
     """Micro → texte + empreinte. `muet` permet d'ignorer le micro pendant qu'Orion parle."""
 
     def __init__(self, cfg):
-        import sounddevice as sd
         from vosk import SetLogLevel, SpkModel
         SetLogLevel(-1)
         self.file = queue.Queue()
+        self._ferme = False
         self.muet = False
         self.confiance = 1.0
         self.niveau = 0.0
@@ -221,9 +222,55 @@ class Oreille:
         spk = UTILISATEUR / cfg["modele_locuteur"]
         self._spk = SpkModel(str(spk)) if spk.exists() else None
         self.charger(cfg.get("chemin_vosk") or UTILISATEUR / cfg["modele_vosk"])
+        self.flux = None
+        self._ouvrir()
+        threading.Thread(target=self._suivre_micro, daemon=True).start()
+
+    def _ouvrir(self, relancer=False):
+        """Ouvre le micro par défaut du système. `relancer` : PortAudio est redémarré d'abord, lui qui fige
+        les périphériques à son démarrage (ce programme n'a pas d'autre flux ouvert : voix et bips sont à part)."""
+        import sounddevice as sd
+        if self.flux:
+            try:
+                self.flux.close()
+            except Exception:
+                pass  # micro débranché : flux déjà perdu
+            self.flux = None
+        if relancer:
+            sd._terminate()
+            sd._initialize()
         self.flux = sd.RawInputStream(samplerate=16000, blocksize=4000, dtype="int16", channels=1,
                                       callback=self._recevoir)
         self.flux.start()
+
+    def _suivre_micro(self):
+        """Suit le micro choisi dans le système (casque branché, autre entrée) : on rouvre l'écoute dessus."""
+        import sys
+        import time
+        from .bouche import micros_changes
+        changements = micros_changes()
+        while True:
+            try:
+                nom = changements.get()
+            except (EOFError, OSError):  # le programme se ferme
+                return
+            if self._ferme:
+                return
+            for essai in range(3):  # un casque sans fil met parfois un instant à être prêt
+                try:
+                    self._ouvrir(relancer=True)
+                    print(f"[micro : {nom}]", flush=True)
+                    break
+                except Exception as e:
+                    if essai == 2:
+                        print(f"[micro « {nom} » inutilisable] {e}", file=sys.stderr, flush=True)
+                    time.sleep(1)
+
+    def fermer(self):
+        self._ferme = True
+        if self.flux:
+            self.flux.close()
+            self.flux = None
 
     def charger(self, chemin_modele):
         """(Re)charge le modèle de reconnaissance, par exemple pour changer de langue de discussion."""

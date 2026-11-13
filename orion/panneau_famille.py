@@ -283,7 +283,7 @@ class Famille:
                         mesures.append(oreille.traits)
                         afficher(f"✓ « {texte} » — phrase suivante ({len(vecteurs) + 1}/5)" if len(vecteurs) < 5
                                  else "Enregistrement terminé.")
-                oreille.flux.stop()
+                oreille.fermer()
                 Profils(self.cfg["seuil_locuteur"]).enregistrer(nom, vecteurs, mesures, completer)
                 afficher(f"La voix de {nom} est {'complétée' if completer else 'enregistrée'} : "
                          f"{self.cfg['nom']} la reconnaîtra mieux.")

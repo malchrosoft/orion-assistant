@@ -44,10 +44,10 @@ def parole_recente(marge=1.5):
         return False
 
 
-def _sortie_son():
-    """sounddevice, relancé pour suivre la sortie choisie dans le système (casque branché, écran, enceinte…) :
-    PortAudio fige la liste des périphériques et celui par défaut à son démarrage. À n'appeler que dans un
-    processus sans flux ouvert : relancer PortAudio couperait le micro du programme principal."""
+def _son_a_jour():
+    """sounddevice, relancé pour suivre la sortie et le micro choisis dans le système (casque branché, écran,
+    enceinte…) : PortAudio fige la liste des périphériques et ceux par défaut à son démarrage. À n'appeler que
+    dans un processus sans flux ouvert : relancer PortAudio couperait le micro du programme principal."""
     import sounddevice as sd
     sd._terminate()
     sd._initialize()
@@ -56,7 +56,7 @@ def _sortie_son():
 
 def _jouer_bip(volume, note):
     import array, math
-    sd = _sortie_son()
+    sd = _son_a_jour()
     taux = int(sd.query_devices(kind="output")["default_samplerate"])
     sons = array.array("h")
     for frequence, duree in (((note, 0.22),) if note else ((660, 0.09), (880, 0.14))):
@@ -68,27 +68,48 @@ def _jouer_bip(volume, note):
         f.write(sons.tobytes())
 
 
-def _worker_bips(file):
-    """Boucle du processus des bips : à part, pour suivre la sortie du système sans toucher au micro."""
+def _worker_son(ordres, micros):
+    """Boucle du processus du son, à part pour suivre les réglages du système sans toucher au micro : joue
+    les bips et, entre deux, signale dans `micros` tout changement du micro par défaut."""
+    import queue
+    micro = None
     while True:
         try:
-            _jouer_bip(*file.get())
+            _jouer_bip(*ordres.get(timeout=3))
+        except queue.Empty:
+            try:
+                nom = _son_a_jour().query_devices(kind="input")["name"]
+            except Exception:
+                continue  # aucun micro pour l'instant
+            if micro not in (None, nom):
+                micros.put(nom)
+            micro = nom
         except Exception:
             pass  # pas de sortie son : le changement de couleur suffit
 
 
-_bips = None
+_son = None
+
+
+def _processus_son():
+    """(ordres, micros) : les deux files du processus du son, lancé au premier besoin."""
+    global _son
+    if _son is None:
+        _son = multiprocessing.Queue(), multiprocessing.Queue()
+        multiprocessing.Process(target=_worker_son, args=_son, daemon=True).start()
+    return _son
+
+
+def micros_changes():
+    """File où arrive le nom du nouveau micro par défaut, chaque fois qu'il change dans le système."""
+    return _processus_son()[1]
 
 
 def bip(volume=0.12, note=None):
     """Petit carillon doux (deux notes montantes) : Orion est prêt à écouter, sans regarder l'écran. Avec
     `note` (Hz) : un seul bip à cette hauteur (celle d'un minuteur, pour le reconnaître à l'oreille).
     Synthétisé à la volée : pas de fichier son à livrer, ni de décodeur, ni de licence."""
-    global _bips
-    if _bips is None:
-        _bips = multiprocessing.Queue()
-        multiprocessing.Process(target=_worker_bips, args=(_bips,), daemon=True).start()
-    _bips.put((volume, note))
+    _processus_son()[0].put((volume, note))
 
 
 def lister_voix():
@@ -183,7 +204,7 @@ def _dire_piper(ordre):
     joué, dans un seul flux audio continu, avec un silence dosé entre les morceaux."""
     import queue
     import threading
-    sd = _sortie_son()
+    sd = _son_a_jour()
     native = int(sd.query_devices(kind="output")["default_samplerate"])
     prets = queue.Queue(maxsize=2)
 
